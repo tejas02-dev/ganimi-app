@@ -23,6 +23,7 @@ function StudentDrawerContent(props: any) {
           <Text style={styles.logoText}>Ganimi</Text>
           <Text style={styles.logoSubtitle}>Student</Text>
         </View>
+        <Text style={styles.sectionLabel}>Main Navigation</Text>
         <DrawerItemList {...props} />
       </DrawerContentScrollView>
 
@@ -89,20 +90,47 @@ export default function StudentLayout() {
         }}
       />
       <Drawer.Screen
-        name="courses"
+        name="browse-categories"
         options={{
-          title: 'My Courses',
+          title: 'Browse Categories',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="book-outline" size={size} color={color} />
+            <Ionicons name="grid-outline" size={size} color={color} />
           ),
         }}
       />
       <Drawer.Screen
-        name="bookings"
+        name="my-services"
         options={{
-          title: 'My Bookings',
+          title: 'My Services',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="calendar-outline" size={size} color={color} />
+            <Ionicons name="briefcase-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Drawer.Screen
+        name="my-orders"
+        options={{
+          title: 'My Orders',
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="cart-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Drawer.Screen
+        name="reports"
+        options={{
+          title: 'Reports',
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="bar-chart-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Drawer.Screen
+        name="favorites"
+        options={{
+          title: 'Favorites',
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="heart-outline" size={size} color={color} />
           ),
         }}
       />
@@ -116,11 +144,38 @@ export default function StudentLayout() {
         }}
       />
       <Drawer.Screen
+        name="reminders"
+        options={{
+          title: 'Reminders',
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="time-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Drawer.Screen
         name="settings"
         options={{
           title: 'Settings',
           drawerIcon: ({ color, size }) => (
             <Ionicons name="settings-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Drawer.Screen
+        name="events"
+        options={{
+          title: 'Events',
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="calendar-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Drawer.Screen
+        name="contact-us"
+        options={{
+          title: 'Contact Us',
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="call-outline" size={size} color={color} />
           ),
         }}
       />
@@ -153,6 +208,14 @@ const styles = StyleSheet.create({
   logoSubtitle: {
     fontSize: 12,
     color: Colors.textSecondary,
+  },
+  sectionLabel: {
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    fontSize: 12,
+    fontWeight: '500',
+    color: Colors.textSecondary,
+    textTransform: 'uppercase',
   },
   userSection: {
     flexDirection: 'row',

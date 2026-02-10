@@ -8,6 +8,7 @@ import {
   ScrollView,
   TextInput,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
@@ -15,8 +16,10 @@ import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import { authService } from '@/services/auth.service';
 import type { VendorProfile, VendorOnboardingStatus, Gender, Branch } from '@/types/auth';
+import * as ImagePicker from 'expo-image-picker';
+import { apiService } from '@/services/api';
 
-type SectionKey = 'personal' | 'institution' | 'bank' | null;
+type SectionKey = 'personal' | 'institution' | 'bank' | 'password' | null;
 
 export default function VendorProfileScreen() {
   const router = useRouter();
@@ -54,7 +57,44 @@ export default function VendorProfileScreen() {
   const [bankIfscCode, setBankIfscCode] = useState('');
   const [isSavingBank, setIsSavingBank] = useState(false);
 
+  // Change password
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [localPhotoUri, setLocalPhotoUri] = useState<string | null>(null);
+  const [isSavingPhoto, setIsSavingPhoto] = useState(false);
+
   const [expandedSection, setExpandedSection] = useState<SectionKey>('personal');
+
+  const applyVendorToState = (vendor: VendorProfile) => {
+    setProfile(vendor);
+
+    setFullName(vendor.name ?? '');
+    setEmail(vendor.email ?? '');
+    setPhone(vendor.phone ?? '');
+    setGender((vendor.gender as Gender) ?? '');
+    setAddress(vendor.address ?? '');
+    setPincode(vendor.pincode ?? '');
+    // Backend uses "dob" field name
+    setDateOfBirth((vendor as any).dateOfBirth ?? vendor.dob ?? '');
+    setQualification(vendor.qualification ?? '');
+    setExperience(vendor.experience ?? '');
+    setAadharNumber(vendor.aadharNumber ?? '');
+    setPanNumber(vendor.panNumber ?? '');
+    setAchievements(vendor.achievements ?? '');
+
+    // Institution details
+    setInstitutionName(vendor.businessName ?? '');
+    setInstitutionPhone(vendor.businessPhone ?? '');
+    setInstitutionEmail(vendor.businessEmail ?? '');
+    setBranches(vendor.branches ?? []);
+
+    // Bank details
+    setBankName(vendor.bankName ?? '');
+    setBankAccountHolderName(vendor.bankAccountHolderName ?? '');
+    setBankAccountNumber(vendor.bankAccountNumber ?? '');
+    setBankIfscCode(vendor.bankIfscCode ?? '');
+  };
 
   useEffect(() => {
     loadData();
@@ -65,39 +105,24 @@ export default function VendorProfileScreen() {
     setError(null);
     try {
       const [profileRes, onboardingRes] = await Promise.all([
-        authService.getUserProfile(),
+        apiService.get<{ status: string; message: string; data: VendorProfile }>('/auth/user'),
         authService.getVendorOnboardingStatus(),
       ]);
 
+      console.log('[VendorProfile] /auth/user response', profileRes);
       const vendor = profileRes.data;
-      setProfile(vendor);
+
+      if (__DEV__) {
+        console.log('[VendorProfile] /auth/user response', { vendor });
+      }
+
+      if (!vendor) {
+        throw new Error('Vendor profile data not found in /auth/user response.');
+      }
+
+      applyVendorToState(vendor);
+      setLocalPhotoUri(null);
       setOnboarding(onboardingRes.data);
-
-      setFullName(vendor.name ?? '');
-      setEmail(vendor.email ?? '');
-      setPhone(vendor.phone ?? '');
-      setGender((vendor.gender as Gender) ?? '');
-      setAddress(vendor.address ?? '');
-      setPincode(vendor.pincode ?? '');
-      // Backend uses "dob" field name
-      setDateOfBirth(vendor.dob ?? '');
-      setQualification(vendor.qualification ?? '');
-      setExperience(vendor.experience ?? '');
-      setAadharNumber(vendor.aadharNumber ?? '');
-      setPanNumber(vendor.panNumber ?? '');
-      setAchievements(vendor.achievements ?? '');
-
-      // Institution details
-      setInstitutionName(vendor.businessName ?? '');
-      setInstitutionPhone(vendor.businessPhone ?? '');
-      setInstitutionEmail(vendor.businessEmail ?? '');
-      setBranches(vendor.branches ?? []);
-
-      // Bank details
-      setBankName(vendor.bankName ?? '');
-      setBankAccountHolderName(vendor.bankAccountHolderName ?? '');
-      setBankAccountNumber(vendor.bankAccountNumber ?? '');
-      setBankIfscCode(vendor.bankIfscCode ?? '');
     } catch (e: any) {
       console.error('Failed to load vendor profile', e);
       setError(e?.message || 'Unable to load profile. Please try again.');
@@ -226,6 +251,80 @@ export default function VendorProfileScreen() {
     }
   };
 
+  const handlePickPhoto = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        'Permission required',
+        'Please allow access to your photos to upload a profile picture.'
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (result.canceled || !result.assets?.length) {
+      return;
+    }
+
+    const asset = result.assets[0];
+    if (!asset?.uri) return;
+    setLocalPhotoUri(asset.uri);
+    setProfile((prev) => (prev ? { ...prev, profilePicture: asset.uri } : prev));
+  };
+
+  const handleSavePhoto = async () => {
+    if (!localPhotoUri) {
+      Alert.alert('Select image', 'Please select a photo first.');
+      return;
+    }
+
+    setIsSavingPhoto(true);
+    try {
+      const filename = localPhotoUri.split('/').pop() || 'profile.jpg';
+      const mimeType = 'image/jpeg';
+      const res = await authService.uploadProfileImage(localPhotoUri, mimeType, filename);
+      if (res.profilePicture) {
+        setProfile((prev) => (prev ? { ...prev, profilePicture: res.profilePicture } : prev));
+      }
+      Alert.alert('Success', 'Profile photo updated successfully.');
+      setLocalPhotoUri(null);
+    } catch (e: any) {
+      console.error('Failed to upload profile image', e);
+      Alert.alert('Error', e?.message || 'Failed to update profile photo. Please try again.');
+    } finally {
+      setIsSavingPhoto(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!oldPassword.trim() || !newPassword.trim()) {
+      Alert.alert('Validation', 'Please fill in both old and new password.');
+      return;
+    }
+
+    setIsSavingPassword(true);
+    try {
+      await authService.updatePassword({
+        oldPassword: oldPassword.trim(),
+        newPassword: newPassword.trim(),
+      });
+      Alert.alert('Success', 'Password updated successfully.');
+      setOldPassword('');
+      setNewPassword('');
+    } catch (e: any) {
+      console.error('Failed to update password', e);
+      Alert.alert('Error', e?.message || 'Failed to update password. Please try again.');
+    } finally {
+      setIsSavingPassword(false);
+    }
+  };
+
   const getOnboardingLabel = () => {
     if (!onboarding) return 'Loading…';
     if (onboarding.onboardingCompleted) return 'Onboarding complete';
@@ -263,44 +362,81 @@ export default function VendorProfileScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.headerCard}>
-        <View style={styles.headerTopRow}>
-          <View style={styles.avatarContainer}>
-            <Ionicons name="person" size={48} color={Colors.primary} />
-          </View>
-          <View style={styles.headerInfo}>
-            <Text style={styles.name}>{profile?.name ?? user?.name}</Text>
-            <Text style={styles.email}>{profile?.email ?? user?.email}</Text>
-            <View style={styles.roleBadge}>
-              <Text style={styles.roleText}>{user?.role}</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.statusRow}>
-          <View style={[styles.statusPill, { backgroundColor: getOnboardingStatusColor() + '22' }]}>
-            <Ionicons
-              name={onboarding?.onboardingCompleted ? 'checkmark-circle' : 'time-outline'}
-              size={16}
-              color={getOnboardingStatusColor()}
-            />
-            <Text style={[styles.statusText, { color: getOnboardingStatusColor() }]}>{getOnboardingLabel()}</Text>
-          </View>
-        </View>
-      </View>
-
+    <View style={styles.container}>
       {isLoading ? (
-        <View style={styles.loadingRow}>
-          <ActivityIndicator color={Colors.primary} />
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
           <Text style={styles.loadingText}>Loading profile…</Text>
         </View>
-      ) : null}
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Header card with profile image and status */}
+          <View style={styles.headerCard}>
+            <View style={styles.avatarContainer}>
+              {localPhotoUri || profile?.profilePicture ? (
+                <Image
+                  source={{ uri: localPhotoUri || (profile?.profilePicture as string) }}
+                  style={styles.avatarImage}
+                />
+              ) : (
+                <View style={styles.avatarFallback}>
+                  <Text style={styles.avatarFallbackText}>
+                    {(profile?.name || user?.name || 'V').charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </View>
 
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            <View style={styles.headerTextCol}>
+              <Text style={styles.name} numberOfLines={1}>
+                {profile?.name ?? user?.name}
+              </Text>
+              <Text style={styles.email} numberOfLines={1}>
+                {profile?.email ?? user?.email}
+              </Text>
+              <View style={styles.roleBadge}>
+                <Text style={styles.roleText}>{user?.role}</Text>
+              </View>
+            </View>
 
-      {/* Personal information */}
-      <View style={styles.formCard}>
+            <View style={styles.photoActions}>
+              <TouchableOpacity style={styles.uploadButton} onPress={handlePickPhoto}>
+                <Ionicons name="attach-outline" size={16} color={Colors.text} />
+                <Text style={styles.uploadButtonText}>Upload New Photo</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.savePhotoButton}
+                onPress={handleSavePhoto}
+                disabled={isSavingPhoto}
+              >
+                {isSavingPhoto ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Text style={styles.savePhotoButtonText}>Save Photo</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.statusRow}>
+              <View style={[styles.statusPill, { backgroundColor: getOnboardingStatusColor() + '22' }]}>
+                <Ionicons
+                  name={onboarding?.onboardingCompleted ? 'checkmark-circle' : 'time-outline'}
+                  size={16}
+                  color={getOnboardingStatusColor()}
+                />
+                <Text style={[styles.statusText, { color: getOnboardingStatusColor() }]}>{getOnboardingLabel()}</Text>
+              </View>
+            </View>
+          </View>
+
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+          {/* Personal information */}
+          <View style={styles.formCard}>
         <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleSection('personal')}>
           <Text style={styles.sectionTitle}>Personal information</Text>
           <Ionicons
@@ -481,8 +617,8 @@ export default function VendorProfileScreen() {
         )}
       </View>
 
-      {/* Institution details */}
-      <View style={[styles.formCard, styles.institutionCard]}>
+          {/* Institution details */}
+          <View style={[styles.formCard, styles.institutionCard]}>
         <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleSection('institution')}>
           <Text style={styles.sectionTitle}>Institution details</Text>
           <Ionicons
@@ -598,8 +734,8 @@ export default function VendorProfileScreen() {
         )}
       </View>
 
-      {/* Bank details */}
-      <View style={[styles.formCard, styles.bankCard]}>
+          {/* Bank details */}
+          <View style={[styles.formCard, styles.bankCard]}>
         <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleSection('bank')}>
           <Text style={styles.sectionTitle}>Bank details</Text>
           <Ionicons
@@ -668,13 +804,66 @@ export default function VendorProfileScreen() {
         )}
       </View>
 
-      <View style={styles.footerActions}>
-        <TouchableOpacity style={styles.footerButton} onPress={handleLogout}>
-          <Ionicons name="log-out-outline" size={20} color={Colors.error} />
-          <Text style={styles.footerButtonText}>Logout</Text>
+      {/* Change password */}
+      <View style={[styles.formCard, styles.bankCard]}>
+        <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleSection('password')}>
+          <Text style={styles.sectionTitle}>Change password</Text>
+          <Ionicons
+            name={expandedSection === 'password' ? 'chevron-up-outline' : 'chevron-down-outline'}
+            size={20}
+            color={Colors.textSecondary}
+          />
         </TouchableOpacity>
+
+        {expandedSection === 'password' && (
+          <View style={styles.sectionBody}>
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>Old password</Text>
+              <TextInput
+                style={styles.input}
+                value={oldPassword}
+                onChangeText={setOldPassword}
+                placeholder="Old password"
+                secureTextEntry
+              />
+            </View>
+
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>New password</Text>
+              <TextInput
+                style={styles.input}
+                value={newPassword}
+                onChangeText={setNewPassword}
+                placeholder="New password"
+                secureTextEntry
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.saveButton, isSavingPassword && styles.saveButtonDisabled]}
+              onPress={handleChangePassword}
+              disabled={isSavingPassword}
+            >
+              {isSavingPassword ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.saveButtonText}>Save changes</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
-    </ScrollView>
+
+          {/* Logout */}
+          <View style={styles.footerActions}>
+            <TouchableOpacity style={styles.footerButton} onPress={handleLogout}>
+              <Ionicons name="log-out-outline" size={20} color={Colors.error} />
+              <Text style={styles.footerButtonText}>Logout</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      )}
+    </View>
   );
 }
 
@@ -683,34 +872,52 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  content: {
+  scrollContent: {
     padding: 16,
-    paddingTop: 32,
     paddingBottom: 32,
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerCard: {
     backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 20,
+    padding: 20,
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  headerTopRow: {
-    flexDirection: 'row',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   avatarContainer: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: Colors.backgroundSecondary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
   },
-  headerInfo: {
+  headerTextCol: {
+    alignItems: 'center',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  avatarFallback: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarFallbackText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.primary,
   },
   name: {
     fontSize: 22,
@@ -728,7 +935,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 16,
-    alignSelf: 'flex-start',
+    marginTop: 4,
   },
   roleText: {
     color: '#FFF',
@@ -739,7 +946,7 @@ const styles = StyleSheet.create({
   statusRow: {
     marginTop: 12,
     flexDirection: 'row',
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
   },
   statusPill: {
     flexDirection: 'row',
@@ -771,16 +978,51 @@ const styles = StyleSheet.create({
   formCard: {
     backgroundColor: '#FFF',
     borderRadius: 16,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1,
   },
   institutionCard: {
-    marginTop: 16,
   },
   bankCard: {
-    marginTop: 16,
+  },
+  photoActions: {
+    marginTop: 12,
+    width: '100%',
+    alignItems: 'center',
+    gap: 8,
+  },
+  uploadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: '#F9FAFB',
+    gap: 6,
+  },
+  uploadButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.text,
+  },
+  savePhotoButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 32,
+    borderRadius: 999,
+    backgroundColor: Colors.primary,
+  },
+  savePhotoButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFF',
   },
   sectionTitle: {
     fontSize: 18,
@@ -797,12 +1039,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   fieldGroup: {
-    marginBottom: 14,
+    marginBottom: 12,
   },
   fieldLabel: {
     fontSize: 13,
-    fontWeight: '500',
-    color: Colors.textSecondary,
+    fontWeight: '600',
+    color: Colors.text,
     marginBottom: 6,
   },
   input: {
@@ -811,16 +1053,16 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    fontSize: 15,
+    fontSize: 14,
     color: Colors.text,
-    backgroundColor: Colors.inputBackground,
+    backgroundColor: '#F9FAFB',
   },
   inputDisabled: {
     backgroundColor: '#F3F4F6',
     color: Colors.textSecondary,
   },
   multilineInput: {
-    minHeight: 68,
+    minHeight: 72,
     textAlignVertical: 'top',
   },
   row: {
@@ -841,11 +1083,11 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: Colors.border,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F9FAFB',
   },
   genderChipActive: {
-    backgroundColor: '#DBEAFE',
     borderColor: Colors.primary,
+    backgroundColor: '#ECFEFF',
   },
   genderChipText: {
     fontSize: 13,
@@ -857,17 +1099,18 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     marginTop: 8,
-    backgroundColor: Colors.primary,
-    borderRadius: 10,
     paddingVertical: 12,
+    borderRadius: 999,
+    backgroundColor: Colors.primary,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   saveButtonDisabled: {
     opacity: 0.7,
   },
   saveButtonText: {
     color: '#FFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
   },
   branchesHeader: {
@@ -928,19 +1171,20 @@ const styles = StyleSheet.create({
     color: Colors.error,
   },
   footerActions: {
-    marginTop: 16,
-    alignItems: 'flex-start',
+    marginTop: 8,
+    alignItems: 'center',
   },
   footerButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
   footerButtonText: {
-    marginLeft: 6,
     fontSize: 14,
-    color: Colors.error,
     fontWeight: '500',
+    color: Colors.error,
   },
 });
 

@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User } from '@/types/auth';
+import { User, VendorProfile } from '@/types/auth';
 import { authService } from '@/services/auth.service';
 import { tokenStorage } from '@/services/tokenStorage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface AuthContextType {
   user: User | null;
+  vendorProfile: VendorProfile | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   /**
@@ -14,6 +15,7 @@ interface AuthContextType {
   login: (email: string, password: string, tenantId: string) => Promise<User>;
   logout: () => Promise<void>;
   setUser: (user: User | null) => void;
+  setVendorProfile: (profile: VendorProfile | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,6 +23,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [vendorProfile, setVendorProfile] = useState<VendorProfile | null>(null);
 
   useEffect(() => {
     // Clean up any old token storage from AsyncStorage (migration cleanup)
@@ -42,6 +45,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const storedUser = await AsyncStorage.getItem('user');
       if (storedUser) {
         setUser(JSON.parse(storedUser));
+      }
+
+      // Load cached vendor profile if available
+      const storedVendorProfile = await AsyncStorage.getItem('vendorProfile');
+      if (storedVendorProfile) {
+        setVendorProfile(JSON.parse(storedVendorProfile));
       }
       
       // Optionally verify with the server
@@ -87,11 +96,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           hasRefresh: !!verification.refresh_token,
         });
       }
-      
+
+      // Fetch vendor profile (for vendor-specific data like categoryId, branches, etc.)
+      let profile: VendorProfile | null = null;
+      try {
+        const profileResponse = await authService.getUserProfile();
+        profile = profileResponse.data;
+        setVendorProfile(profile);
+        await AsyncStorage.setItem('vendorProfile', JSON.stringify(profile));
+      } catch (profileError) {
+        console.warn('[Auth] Failed to fetch vendor profile', profileError);
+      }
+
       const authenticatedUser = response.user;
       setUser(authenticatedUser);
       await AsyncStorage.setItem('user', JSON.stringify(authenticatedUser));
-      
+
       return authenticatedUser;
     } catch (error) {
       throw error;
@@ -105,7 +125,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.error('Logout error:', error);
     } finally {
       setUser(null);
+      setVendorProfile(null);
       await AsyncStorage.removeItem('user');
+      await AsyncStorage.removeItem('vendorProfile');
       await tokenStorage.clear();
     }
   };
@@ -114,11 +136,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     <AuthContext.Provider
       value={{
         user,
+        vendorProfile,
         isLoading,
         isAuthenticated: !!user,
         login,
         logout,
         setUser,
+        setVendorProfile,
       }}
     >
       {children}

@@ -8,29 +8,37 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Colors } from '@/constants/Colors';
-import { notificationService } from '@/services/notification.service';
-import type { NotificationItem } from '@/types/notification';
+import { useAuth } from '@/context/AuthContext';
+import { serviceService } from '@/services/service.service';
+import type { StudentOrder } from '@/types/service';
 import { Ionicons } from '@expo/vector-icons';
 
-export default function StudentNotificationsScreen() {
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+export default function StudentMyOrdersScreen() {
+  const { user } = useAuth();
+  const [orders, setOrders] = useState<StudentOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadNotifications();
+    loadOrders();
   }, []);
 
-  const loadNotifications = async () => {
+  const loadOrders = async () => {
+    if (!user?.id) {
+      setError('User not found');
+      setIsLoading(false);
+      return;
+    }
+
     try {
       setError(null);
       if (!isRefreshing) setIsLoading(true);
-      const res = await notificationService.getMyNotifications();
-      setNotifications(res.data || []);
+      const response = await serviceService.getStudentOrders(user.id);
+      setOrders(response.data || []);
     } catch (e: any) {
-      console.error('Failed to load notifications', e);
-      setError(e?.message || 'Unable to load notifications. Please try again.');
+      console.error('Failed to load student orders', e);
+      setError(e?.message || 'Unable to load orders. Please try again.');
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -39,65 +47,65 @@ export default function StudentNotificationsScreen() {
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    loadNotifications();
+    loadOrders();
   };
 
-  const totalNotifications = notifications.length;
-  const announcementCount = notifications.filter((n) => n.type === 'announcement').length;
-  const adminCount = notifications.filter((n) => n.createdByRole === 'ganimi_admin').length;
-  const last7DaysCount = notifications.filter((n) => {
-    const created = new Date(n.createdAt);
-    if (isNaN(created.getTime())) return false;
-    const diffMs = Date.now() - created.getTime();
-    return diffMs <= 7 * 24 * 60 * 60 * 1000;
-  }).length;
+  const totalOrders = orders.length;
+  const totalSpent = orders.reduce((sum, o) => {
+    const numericAmount =
+      typeof o.amount === 'number'
+        ? o.amount
+        : Number.parseFloat((o.amount as unknown as string) || '0');
+    if (Number.isNaN(numericAmount)) return sum;
+    return sum + numericAmount;
+  }, 0);
+  const activeOrders = orders.filter((o) => o.status === 'active' || o.status === 'ongoing').length;
+  const pendingOrders = orders.filter((o) => o.status === 'pending').length;
 
-  const renderNotificationCard = ({ item }: { item: NotificationItem }) => {
-    const created = new Date(item.createdAt);
-    const createdLabel = isNaN(created.getTime())
-      ? ''
-      : created.toLocaleString();
-
-    return (
-      <View style={styles.card}>
-        <View style={styles.cardHeaderRow}>
-          <View style={styles.cardTitleCol}>
-            <Text style={styles.cardTitle} numberOfLines={1}>
-              {item.title}
-            </Text>
-            <Text style={styles.cardSubtitle} numberOfLines={2}>
-              {item.message}
-            </Text>
-          </View>
-          <View style={styles.typePill}>
-            <Text style={styles.typePillText}>
-              {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.infoRow}>
-          <Ionicons name="person-outline" size={14} color={Colors.textSecondary} />
-          <Text style={styles.infoText} numberOfLines={1}>
-            From: {item.createdByRole === 'ganimi_admin' ? 'Ganimi Team' : item.createdByRole}
+  const renderOrderCard = ({ item }: { item: StudentOrder }) => (
+    <View style={styles.card}>
+      <View style={styles.cardHeaderRow}>
+        <View style={styles.cardTitleCol}>
+          <Text style={styles.cardTitle} numberOfLines={1}>
+            {item.categoryName || 'Service Order'}
+          </Text>
+          <Text style={styles.cardSubtitle} numberOfLines={1}>
+            Order ID: {item.orderId}
           </Text>
         </View>
-
-        {createdLabel ? (
-          <View style={styles.infoRow}>
-            <Ionicons name="time-outline" size={14} color={Colors.textSecondary} />
-            <Text style={styles.infoText}>{createdLabel}</Text>
-          </View>
-        ) : null}
+        <View style={styles.amountPill}>
+          <Text style={styles.amountText}>₹{item.amount.toLocaleString()}</Text>
+        </View>
       </View>
-    );
-  };
+
+      {item.vendor?.vendorName ? (
+        <View style={styles.infoRow}>
+          <Ionicons name="person-outline" size={16} color={Colors.textSecondary} />
+          <Text style={styles.infoText} numberOfLines={1}>
+            {item.vendor.vendorName}
+          </Text>
+        </View>
+      ) : null}
+
+      <View style={styles.infoRow}>
+        <Ionicons name="pricetag-outline" size={16} color={Colors.textSecondary} />
+        <Text style={styles.infoText}>{item.orderType}</Text>
+      </View>
+
+      <View style={styles.infoRow}>
+        <Ionicons name="ellipse" size={10} color={item.status === 'completed' ? Colors.success : Colors.warning} />
+        <Text style={styles.statusText}>
+          {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+        </Text>
+      </View>
+    </View>
+  );
 
   if (isLoading && !isRefreshing) {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Loading notifications...</Text>
+        <Text style={styles.loadingText}>Loading your orders...</Text>
       </View>
     );
   }
@@ -105,40 +113,38 @@ export default function StudentNotificationsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.title}>Notifications</Text>
-        <Text style={styles.subtitle}>
-          Stay up to date with class updates and announcements.
-        </Text>
+        <Text style={styles.title}>My Orders</Text>
+        <Text style={styles.subtitle}>Track your orders and payments</Text>
       </View>
 
-      {/* Overview tiles */}
+      {/* Overview boxes */}
       <View style={styles.overviewRow}>
-        <View style={[styles.overviewCard, styles.overviewTotal]}>
-          <Text style={styles.overviewLabel}>Total</Text>
-          <Text style={styles.overviewValue}>{totalNotifications}</Text>
+        <View style={[styles.overviewCard, styles.overviewTotalOrders]}>
+          <Text style={styles.overviewLabel}>Total Orders</Text>
+          <Text style={styles.overviewValue}>{totalOrders}</Text>
         </View>
-        <View style={[styles.overviewCard, styles.overviewAnnouncements]}>
-          <Text style={styles.overviewLabel}>Announcements</Text>
-          <Text style={styles.overviewValue}>{announcementCount}</Text>
+        <View style={[styles.overviewCard, styles.overviewTotalSpent]}>
+          <Text style={styles.overviewLabel}>Total Spent</Text>
+          <Text style={styles.overviewValue}>₹{totalSpent.toLocaleString()}</Text>
         </View>
       </View>
       <View style={styles.overviewRow}>
-        <View style={[styles.overviewCard, styles.overviewAdmin]}>
-          <Text style={styles.overviewLabel}>From Ganimi</Text>
-          <Text style={styles.overviewValue}>{adminCount}</Text>
+        <View style={[styles.overviewCard, styles.overviewActive]}>
+          <Text style={styles.overviewLabel}>Active Orders</Text>
+          <Text style={styles.overviewValue}>{activeOrders}</Text>
         </View>
-        <View style={[styles.overviewCard, styles.overviewRecent]}>
-          <Text style={styles.overviewLabel}>Last 7 Days</Text>
-          <Text style={styles.overviewValue}>{last7DaysCount}</Text>
+        <View style={[styles.overviewCard, styles.overviewPending]}>
+          <Text style={styles.overviewLabel}>Pending Orders</Text>
+          <Text style={styles.overviewValue}>{pendingOrders}</Text>
         </View>
       </View>
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
       <FlatList
-        data={notifications}
-        keyExtractor={(item) => item.id}
-        renderItem={renderNotificationCard}
+        data={orders}
+        keyExtractor={(item) => item.orderId}
+        renderItem={renderOrderCard}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
@@ -146,9 +152,9 @@ export default function StudentNotificationsScreen() {
         ListEmptyComponent={
           !isLoading && !error ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No notifications yet</Text>
+              <Text style={styles.emptyTitle}>No orders yet</Text>
               <Text style={styles.emptySubtitle}>
-                You&apos;ll see important updates and announcements here.
+                When you place an order, it will appear here.
               </Text>
             </View>
           ) : null
@@ -183,9 +189,9 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: Colors.text,
-    marginBottom: 8,
   },
   subtitle: {
+    marginTop: 8,
     fontSize: 14,
     color: Colors.textSecondary,
   },
@@ -202,16 +208,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     marginHorizontal: 4,
   },
-  overviewTotal: {
+  overviewTotalOrders: {
     backgroundColor: '#DBEAFE',
   },
-  overviewAnnouncements: {
+  overviewTotalSpent: {
     backgroundColor: '#DCFCE7',
   },
-  overviewAdmin: {
+  overviewActive: {
     backgroundColor: '#FEF3C7',
   },
-  overviewRecent: {
+  overviewPending: {
     backgroundColor: '#FFEDD5',
   },
   overviewLabel: {
@@ -250,7 +256,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   cardTitleCol: {
     flex: 1,
@@ -263,31 +269,35 @@ const styles = StyleSheet.create({
   },
   cardSubtitle: {
     marginTop: 4,
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.textSecondary,
   },
-  typePill: {
+  amountPill: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
     backgroundColor: '#ECFEFF',
   },
-  typePillText: {
-    fontSize: 12,
-    fontWeight: '600',
+  amountText: {
+    fontSize: 13,
+    fontWeight: '700',
     color: Colors.primary,
-    textTransform: 'capitalize',
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 2,
+    marginBottom: 4,
   },
   infoText: {
     fontSize: 13,
     color: Colors.textSecondary,
     flex: 1,
+  },
+  statusText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginLeft: 4,
   },
   emptyState: {
     padding: 24,

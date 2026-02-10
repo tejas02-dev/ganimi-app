@@ -13,3 +13,10 @@ export interface CategoriesResponse {
   message: string;
   data: Category[];
 }
+
+// Extended category shape returned from /student/categories
+export interface StudentCategory extends Category {
+  access?: string;
+  enrolled?: number;
+  serviceCount?: number;
+}

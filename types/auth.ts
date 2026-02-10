@@ -63,6 +63,25 @@ export interface VendorOnboardingStatus {
   onboardingCompleted: boolean;
 }
 
+export interface StudentProfile {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  gender?: Gender | string;
+  address?: string;
+  pincode?: string;
+  /**
+   * Date of birth as returned by the API.
+   * Field name from backend: \"dateOfBirth\" or \"dob\".
+   */
+  dob?: string;
+  school?: string;
+  grade?: string;
+  nickname?: string;
+  profilePicture?: string;
+}
+
 export interface LoginRequest {
   email: string;
   password: string;
