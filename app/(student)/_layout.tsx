@@ -99,6 +99,15 @@ export default function StudentLayout() {
         }}
       />
       <Drawer.Screen
+        name="vendor-directory"
+        options={{
+          title: 'Vendor Directory',
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="business-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Drawer.Screen
         name="my-services"
         options={{
           title: 'My Services',
@@ -186,6 +195,21 @@ export default function StudentLayout() {
           drawerIcon: ({ color, size }) => (
             <Ionicons name="help-circle-outline" size={size} color={color} />
           ),
+        }}
+      />
+      {/* Hidden detail routes (still navigable, not shown in drawer) */}
+      <Drawer.Screen
+        name="course/[courseId]"
+        options={{
+          href: null,
+          drawerItemStyle: { display: 'none' },
+        }}
+      />
+      <Drawer.Screen
+        name="service/[serviceId]"
+        options={{
+          href: null,
+          drawerItemStyle: { display: 'none' },
         }}
       />
     </Drawer>

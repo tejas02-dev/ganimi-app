@@ -187,6 +187,21 @@ export default function VendorLayout() {
           ),
         }}
       />
+      {/* Hidden detail routes (still navigable, not shown in drawer) */}
+      <Drawer.Screen
+        name="service/[serviceId]"
+        options={{
+          href: null,
+          drawerItemStyle: { display: 'none' },
+        }}
+      />
+      <Drawer.Screen
+        name="batch/[batchId]"
+        options={{
+          href: null,
+          drawerItemStyle: { display: 'none' },
+        }}
+      />
     </Drawer>
   );
 }

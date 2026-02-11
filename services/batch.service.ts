@@ -71,6 +71,18 @@ class BatchService {
   async deleteBatch(batchId: string) {
     return apiService.delete(`/batches/${batchId}`);
   }
+
+  /**
+   * Get all batches for the authenticated vendor.
+   * Backend endpoint: GET /vendor/batches
+   */
+  async getVendorBatches(): Promise<{
+    status: string;
+    message: string;
+    data: { id: string; name: string; serviceName?: string }[];
+  }> {
+    return apiService.get(`/vendor/batches`);
+  }
 }
 
 export const batchService = new BatchService();

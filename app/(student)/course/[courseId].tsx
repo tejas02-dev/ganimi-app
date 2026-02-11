@@ -24,6 +24,10 @@ type Params = {
   courseId: string;
 };
 
+export const options = {
+  href: null,
+};
+
 const extractYouTubeId = (url?: string | null): string | null => {
   if (!url) return null;
   try {

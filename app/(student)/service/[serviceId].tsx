@@ -24,6 +24,10 @@ interface ServiceMetaFromParams {
   batchId?: string;
 }
 
+export const options = {
+  href: null,
+};
+
 export default function StudentServiceExploreScreen() {
   const { serviceId, batchId } = useLocalSearchParams<ServiceMetaFromParams>();
   const router = useRouter();

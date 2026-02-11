@@ -67,6 +67,14 @@ class ServiceService {
   async getStudentOrders(studentId: string): Promise<StudentOrdersResponse> {
     return apiService.get<StudentOrdersResponse>(`/orders/student/${studentId}`);
   }
+
+  /**
+   * Get all services for the authenticated vendor.
+   * Backend endpoint: GET /vendor/services
+   */
+  async getVendorServices(): Promise<{ status: string; message: string; data: { id: string; name: string }[] }> {
+    return apiService.get(`/vendor/services`);
+  }
 }
 
 export const serviceService = new ServiceService();

@@ -27,6 +27,10 @@ import {
 } from '@/services/attendance.service';
 import { evaluationService } from '@/services/evaluation.service';
 
+export const options = {
+  href: null,
+};
+
 type Params = {
   batchId: string;
   serviceId?: string;

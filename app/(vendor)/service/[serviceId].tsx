@@ -21,6 +21,10 @@ import { serviceService } from '@/services/service.service';
 import { batchService, type ServiceBatch } from '@/services/batch.service';
 import type { VendorService } from '@/types/service';
 
+export const options = {
+  href: null,
+};
+
 const TIME_OPTIONS = (() => {
   const options: { label: string; value: string }[] = [];
   for (let h = 0; h < 24; h += 1) {
