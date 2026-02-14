@@ -1,15 +1,18 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from '@/constants/Colors';
+import { VendorVerificationGate } from '@/components/VendorVerificationGate';
 
 export default function VendorAnalyticsScreen() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Analytics</Text>
-      <Text style={styles.subtitle}>
-        Performance metrics and insights will be available here.
-      </Text>
-    </View>
+    <VendorVerificationGate>
+      <View style={styles.container}>
+        <Text style={styles.title}>Analytics</Text>
+        <Text style={styles.subtitle}>
+          Performance metrics and insights will be available here.
+        </Text>
+      </View>
+    </VendorVerificationGate>
   );
 }
 

@@ -18,14 +18,17 @@ import { authService } from '@/services/auth.service';
 import type { VendorProfile, VendorOnboardingStatus, Gender, Branch } from '@/types/auth';
 import * as ImagePicker from 'expo-image-picker';
 import { apiService } from '@/services/api';
+import { VendorOnboardingStepper } from '@/components/VendorOnboardingStepper';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type SectionKey = 'personal' | 'institution' | 'bank' | 'password' | null;
 
 export default function VendorProfileScreen() {
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, logout, setVendorProfile } = useAuth();
   const [profile, setProfile] = useState<VendorProfile | null>(null);
   const [onboarding, setOnboarding] = useState<VendorOnboardingStatus | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -100,6 +103,26 @@ export default function VendorProfileScreen() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (!showOnboarding) {
+      loadProfileForForm();
+    }
+  }, [showOnboarding]);
+
+  const loadProfileForForm = async () => {
+    try {
+      const res = await apiService.get<{ status: string; message: string; data: VendorProfile }>(
+        '/auth/user'
+      );
+      const vendor = res.data;
+      if (vendor) {
+        applyVendorToState(vendor);
+      }
+    } catch (e) {
+      console.warn('[VendorProfile] Failed to fetch form data', e);
+    }
+  };
+
   const loadData = async () => {
     setIsLoading(true);
     setError(null);
@@ -122,12 +145,46 @@ export default function VendorProfileScreen() {
 
       applyVendorToState(vendor);
       setLocalPhotoUri(null);
-      setOnboarding(onboardingRes.data);
+      const onboardingData = onboardingRes.data;
+      setOnboarding(onboardingData);
+      setShowOnboarding(!(onboardingData?.onboardingCompleted ?? false));
     } catch (e: any) {
       console.error('Failed to load vendor profile', e);
       setError(e?.message || 'Unable to load profile. Please try again.');
+      setShowOnboarding(true);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const checkOnboardingStatus = async () => {
+    try {
+      const response = await authService.getVendorOnboardingStatus();
+      const data = response.data;
+      const isOnboardingCompleted = data?.onboardingCompleted ?? false;
+      setOnboarding(data);
+      setShowOnboarding(!isOnboardingCompleted);
+      return isOnboardingCompleted;
+    } catch (err) {
+      console.error('Error checking onboarding status:', err);
+      return false;
+    }
+  };
+
+  const handleOnboardingComplete = async () => {
+    const completed = await checkOnboardingStatus();
+    if (completed) {
+      try {
+        const profileResponse = await authService.getUserProfile();
+        const updatedProfile = profileResponse.data;
+        setVendorProfile(updatedProfile);
+        setProfile(updatedProfile);
+        applyVendorToState(updatedProfile);
+        await AsyncStorage.setItem('vendorProfile', JSON.stringify(updatedProfile));
+      } catch (e) {
+        console.warn('Failed to refetch profile after onboarding', e);
+      }
+      Alert.alert('Success', 'Welcome! Your vendor profile is now complete.');
     }
   };
 
@@ -327,7 +384,12 @@ export default function VendorProfileScreen() {
 
   const getOnboardingLabel = () => {
     if (!onboarding) return 'Loading…';
-    if (onboarding.onboardingCompleted) return 'Onboarding complete';
+    if (onboarding.onboardingCompleted) {
+      const status = profile?.isVerified ?? (user as any)?.isVerified ?? '';
+      if (status === 'approved') return 'Approved';
+      if (status === 'applied') return 'Applied';
+      return 'Onboarding complete';
+    }
     if (!onboarding.profileCompleted) return 'Complete personal profile';
     if (!onboarding.institutionCompleted) return 'Complete institution details';
     if (!onboarding.bankCompleted) return 'Add bank details';
@@ -336,7 +398,13 @@ export default function VendorProfileScreen() {
 
   const getOnboardingStatusColor = () => {
     if (!onboarding) return Colors.textSecondary;
-    return onboarding.onboardingCompleted ? Colors.success : Colors.warning;
+    if (onboarding.onboardingCompleted) {
+      const status = profile?.isVerified ?? (user as any)?.isVerified ?? '';
+      if (status === 'approved') return Colors.success;
+      if (status === 'applied') return Colors.warning;
+      return Colors.success;
+    }
+    return Colors.warning;
   };
 
   const handleLogout = () => {
@@ -361,14 +429,58 @@ export default function VendorProfileScreen() {
     setExpandedSection((prev) => (prev === key ? null : key));
   };
 
-  return (
-    <View style={styles.container}>
-      {isLoading ? (
+  if (isLoading) {
+    return (
+      <View style={styles.container}>
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
           <Text style={styles.loadingText}>Loading profile…</Text>
         </View>
-      ) : (
+      </View>
+    );
+  }
+
+  if (showOnboarding) {
+    return (
+      <View style={styles.container}>
+        <VendorOnboardingStepper
+          initialProfile={profile}
+          initialOnboardingStatus={onboarding}
+          onSendEmailOtp={async (email) => {
+            await authService.sendEmailOtp(email);
+          }}
+          onVerifyEmailOtp={async (email, otp) => {
+            await authService.verifyEmailOtp(email, otp);
+          }}
+          onResendEmailOtp={async (email) => {
+            await authService.resendEmailOtp(email);
+          }}
+          onSendPhoneOtp={async (phone) => {
+            await authService.sendPhoneOtp(phone);
+          }}
+          onVerifyPhoneOtp={async (phone, otp) => {
+            await authService.verifyPhoneOtp(phone, otp);
+          }}
+          onResendPhoneOtp={async (phone) => {
+            await authService.resendPhoneOtp(phone);
+          }}
+          onSavePersonal={async (data) => {
+            await authService.updateVendorProfile(data);
+          }}
+          onSaveInstitution={async (data) => {
+            await authService.updateVendorInstitution(data);
+          }}
+          onSaveBank={async (data) => {
+            await authService.updateBankProfile(data);
+          }}
+          onComplete={handleOnboardingComplete}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
@@ -862,7 +974,6 @@ export default function VendorProfileScreen() {
             </TouchableOpacity>
           </View>
         </ScrollView>
-      )}
     </View>
   );
 }

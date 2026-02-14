@@ -17,6 +17,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Colors } from '@/constants/Colors';
+import { VendorVerificationGate } from '@/components/VendorVerificationGate';
 import { serviceService } from '@/services/service.service';
 import { batchService, type ServiceBatch } from '@/services/batch.service';
 import type { VendorService } from '@/types/service';
@@ -465,30 +466,37 @@ export default function VendorServiceDetailScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Loading service details...</Text>
-      </View>
+      <VendorVerificationGate>
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Loading service details...</Text>
+        </View>
+      </VendorVerificationGate>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.errorText}>{error}</Text>
-      </View>
+      <VendorVerificationGate>
+        <View style={styles.centerContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      </VendorVerificationGate>
     );
   }
 
   if (!service) {
     return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.errorText}>Service not found.</Text>
-      </View>
+      <VendorVerificationGate>
+        <View style={styles.centerContainer}>
+          <Text style={styles.errorText}>Service not found.</Text>
+        </View>
+      </VendorVerificationGate>
     );
   }
 
   return (
+    <VendorVerificationGate>
     <View style={styles.container}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -903,12 +911,11 @@ export default function VendorServiceDetailScreen() {
           onChange={handleEndDateChange}
         />
       )}
-      {batches.length > 0 && (
-        <TouchableOpacity style={styles.fab} onPress={handleOpenBatchModal}>
-          <Ionicons name="add" size={28} color="#FFF" />
-        </TouchableOpacity>
-      )}
+      <TouchableOpacity style={styles.fab} onPress={handleOpenBatchModal}>
+        <Ionicons name="add" size={28} color="#FFF" />
+      </TouchableOpacity>
     </View>
+    </VendorVerificationGate>
   );
 }
 

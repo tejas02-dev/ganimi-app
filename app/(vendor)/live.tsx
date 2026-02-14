@@ -1,15 +1,18 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from '@/constants/Colors';
+import { VendorVerificationGate } from '@/components/VendorVerificationGate';
 
 export default function VendorLiveScreen() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Live Sessions</Text>
-      <Text style={styles.subtitle}>
-        Schedule and start your live classes from here.
-      </Text>
-    </View>
+    <VendorVerificationGate>
+      <View style={styles.container}>
+        <Text style={styles.title}>Live Sessions</Text>
+        <Text style={styles.subtitle}>
+          Schedule and start your live classes from here.
+        </Text>
+      </View>
+    </VendorVerificationGate>
   );
 }
 

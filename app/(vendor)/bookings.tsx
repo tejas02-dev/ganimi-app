@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/Colors';
+import { VendorVerificationGate } from '@/components/VendorVerificationGate';
 import { bookingService, type MyBookingItem } from '@/services/booking.service';
 
 function formatBookingDate(iso: string): string {
@@ -83,26 +84,31 @@ export default function VendorBookingsScreen() {
 
   if (isLoading && !isRefreshing) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Loading bookings...</Text>
-      </View>
+      <VendorVerificationGate>
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Loading bookings...</Text>
+        </View>
+      </VendorVerificationGate>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.centerContainer}>
-        <Ionicons name="alert-circle-outline" size={48} color={Colors.error} />
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={loadBookings}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
+      <VendorVerificationGate>
+        <View style={styles.centerContainer}>
+          <Ionicons name="alert-circle-outline" size={48} color={Colors.error} />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadBookings}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </VendorVerificationGate>
     );
   }
 
   return (
+    <VendorVerificationGate>
     <ScrollView
       contentContainerStyle={styles.container}
       refreshControl={
@@ -184,6 +190,7 @@ export default function VendorBookingsScreen() {
         </View>
       )}
     </ScrollView>
+    </VendorVerificationGate>
   );
 }
 

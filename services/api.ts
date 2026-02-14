@@ -66,6 +66,7 @@ class ApiService {
 
     try {
       const response = await fetch(url, config);
+      console.log('[API] Response:', response);
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {

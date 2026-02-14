@@ -18,6 +18,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/Colors';
 import { useAuth } from '@/context/AuthContext';
+import { VendorVerificationGate } from '@/components/VendorVerificationGate';
 import { serviceService } from '@/services/service.service';
 import { VendorService } from '@/types/service';
 import { categoryService } from '@/services/category.service';
@@ -614,26 +615,31 @@ export default function VendorServicesScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Loading services...</Text>
-      </View>
+      <VendorVerificationGate>
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Loading services...</Text>
+        </View>
+      </VendorVerificationGate>
     );
   }
 
   if (error && !services.length) {
     return (
-      <View style={styles.centerContainer}>
-        <Ionicons name="alert-circle-outline" size={64} color="#FF6B6B" />
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={loadServices}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
+      <VendorVerificationGate>
+        <View style={styles.centerContainer}>
+          <Ionicons name="alert-circle-outline" size={64} color="#FF6B6B" />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadServices}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </VendorVerificationGate>
     );
   }
 
   return (
+    <VendorVerificationGate>
     <View style={styles.container}>
       {renderAddServiceModal()}
       {renderDeleteConfirmModal()}
@@ -657,6 +663,7 @@ export default function VendorServicesScreen() {
         </TouchableOpacity>
       )}
     </View>
+    </VendorVerificationGate>
   );
 }
 

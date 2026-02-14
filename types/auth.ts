@@ -46,6 +46,8 @@ export interface VendorProfile {
   role?: UserRole;
   isProfileComplete?: boolean;
   isVerified?: string;
+  /** Backend may return verification status as verificationStatus */
+  verificationStatus?: string;
   businessName?: string;
   businessEmail?: string;
   businessPhone?: string;

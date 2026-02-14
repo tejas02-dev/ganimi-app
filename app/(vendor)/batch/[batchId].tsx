@@ -13,6 +13,7 @@ import Slider from '@react-native-community/slider';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/Colors';
+import { VendorVerificationGate } from '@/components/VendorVerificationGate';
 import { batchService, type ServiceBatch } from '@/services/batch.service';
 import { serviceService } from '@/services/service.service';
 import { enrollmentService, type BatchEnrollment } from '@/services/enrollment.service';
@@ -539,26 +540,32 @@ export default function VendorBatchDetailScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Loading batch details...</Text>
-      </View>
+      <VendorVerificationGate>
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Loading batch details...</Text>
+        </View>
+      </VendorVerificationGate>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.errorText}>{error}</Text>
-      </View>
+      <VendorVerificationGate>
+        <View style={styles.centerContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      </VendorVerificationGate>
     );
   }
 
   if (!batch) {
     return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.errorText}>Batch not found.</Text>
-      </View>
+      <VendorVerificationGate>
+        <View style={styles.centerContainer}>
+          <Text style={styles.errorText}>Batch not found.</Text>
+        </View>
+      </VendorVerificationGate>
     );
   }
 
@@ -574,6 +581,7 @@ export default function VendorBatchDetailScreen() {
   };
 
   return (
+    <VendorVerificationGate>
     <ScrollView contentContainerStyle={styles.container}>
       {/* Colored batch summary */}
       <View style={styles.batchHeaderCard}>
@@ -1126,6 +1134,7 @@ export default function VendorBatchDetailScreen() {
         </View>
       )}
     </ScrollView>
+    </VendorVerificationGate>
   );
 }
 

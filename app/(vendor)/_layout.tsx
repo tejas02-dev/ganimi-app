@@ -1,17 +1,36 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Drawer } from 'expo-router/drawer';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/Colors';
 import { useAuth } from '@/context/AuthContext';
 import { TopBar } from '@/components/TopBar';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Modal,
+  Pressable,
+  Image,
+} from 'react-native';
+import { useRouter } from 'expo-router';
 import {
   DrawerContentScrollView,
   DrawerItemList,
 } from '@react-navigation/drawer';
 
 function VendorDrawerContent(props: any) {
-  const { user } = useAuth();
+  const { user, vendorProfile, logout } = useAuth();
+  const router = useRouter();
+  const [menuVisible, setMenuVisible] = useState(false);
+
+  const handleLogout = async () => {
+    setMenuVisible(false);
+    await logout();
+    router.replace('/login');
+  };
+
+  const profilePicture = vendorProfile?.profilePicture ?? user?.profilePicture;
 
   return (
     <View style={{ flex: 1 }}>
@@ -47,8 +66,60 @@ function VendorDrawerContent(props: any) {
             {user?.email ?? 'vendor@example.com'}
           </Text>
         </View>
-        <Ionicons name="ellipsis-vertical" size={18} color={Colors.textSecondary} />
+        <TouchableOpacity
+          onPress={() => setMenuVisible(true)}
+          style={styles.menuButton}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Ionicons name="ellipsis-vertical" size={18} color={Colors.textSecondary} />
+        </TouchableOpacity>
       </View>
+
+      <Modal
+        visible={menuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuVisible(false)}
+      >
+        <Pressable
+          style={styles.menuOverlay}
+          onPress={() => setMenuVisible(false)}
+        >
+          <Pressable style={styles.menuCard} onPress={(e) => e.stopPropagation()}>
+            {/* User info in popup */}
+            <View style={styles.menuUserRow}>
+              <View style={styles.menuAvatar}>
+                {profilePicture ? (
+                  <Image source={{ uri: profilePicture }} style={styles.menuAvatarImage} />
+                ) : (
+                  <Text style={styles.menuAvatarText}>
+                    {user?.name?.charAt(0)?.toUpperCase() ?? 'U'}
+                  </Text>
+                )}
+              </View>
+              <View style={styles.menuUserInfo}>
+                <Text style={styles.menuUserName} numberOfLines={1}>
+                  {user?.name ?? 'Vendor'}
+                </Text>
+                <Text style={styles.menuUserEmail} numberOfLines={1}>
+                  {user?.email ?? ''}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.menuSeparator} />
+
+            <TouchableOpacity
+              style={styles.menuLogoutRow}
+              onPress={handleLogout}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="log-out-outline" size={20} color={Colors.error} />
+              <Text style={styles.menuLogoutText}>Log out</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -202,6 +273,13 @@ export default function VendorLayout() {
           drawerItemStyle: { display: 'none' },
         }}
       />
+      <Drawer.Screen
+        name="course/[courseId]"
+        options={{
+          href: null,
+          drawerItemStyle: { display: 'none' },
+        }}
+      />
     </Drawer>
   );
 }
@@ -267,6 +345,78 @@ const styles = StyleSheet.create({
   userEmail: {
     fontSize: 12,
     color: Colors.textSecondary,
+  },
+  menuButton: {
+    padding: 4,
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+  },
+  menuCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  menuUserRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  menuAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  menuAvatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 22,
+  },
+  menuAvatarText: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  menuUserInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  menuUserName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  menuUserEmail: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  menuSeparator: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginBottom: 12,
+  },
+  menuLogoutRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  menuLogoutText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: Colors.error,
   },
 });
 

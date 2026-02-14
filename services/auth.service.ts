@@ -38,6 +38,12 @@ export interface UpdateInstitutionProfilePayload {
   branches: Branch[];
 }
 
+export interface UpdateVendorInstitutionPayload {
+  institutionName: string;
+  institutionPhone: string;
+  institutionEmail: string;
+}
+
 export interface UpdateBankProfilePayload {
   bankName: string;
   bankAccountNumber: string;
@@ -203,6 +209,19 @@ class AuthService {
     return apiService.put<{ status: string; message: string }>('/auth/update-institution-profile', payload);
   }
 
+  /**
+   * Update vendor institution during onboarding (no branches).
+   * PUT /auth/update-vendor-institution
+   */
+  async updateVendorInstitution(
+    payload: UpdateVendorInstitutionPayload
+  ): Promise<{ status: string; message: string }> {
+    return apiService.put<{ status: string; message: string }>(
+      '/auth/update-vendor-institution',
+      payload
+    );
+  }
+
   async updateBankProfile(payload: UpdateBankProfilePayload): Promise<{ status: string; message: string }> {
     return apiService.put<{ status: string; message: string }>('/auth/update-bank-profile', payload);
   }
@@ -224,6 +243,77 @@ class AuthService {
       email,
       tenantId,
     });
+  }
+
+  /**
+   * Send OTP to the user's email.
+   * POST /auth/send-email-otp
+   */
+  async sendEmailOtp(email: string): Promise<{ status: string; message: string }> {
+    return apiService.post<{ status: string; message: string }>('/auth/send-email-otp', {
+      email,
+    });
+  }
+
+  /**
+   * Verify email OTP.
+   * POST /auth/verify-email-otp
+   */
+  async verifyEmailOtp(
+    email: string,
+    otp: string
+  ): Promise<{ status: string; message: string }> {
+    return apiService.post<{ status: string; message: string }>(
+      '/auth/verify-email-otp',
+      { email, otp }
+    );
+  }
+
+  /**
+   * Resend email OTP.
+   * POST /auth/resend-email-otp
+   */
+  async resendEmailOtp(email: string): Promise<{ status: string; message: string }> {
+    return apiService.post<{ status: string; message: string }>(
+      '/auth/resend-email-otp',
+      { email }
+    );
+  }
+
+  /**
+   * Send OTP to the user's phone.
+   * POST /auth/send-phone-otp
+   */
+  async sendPhoneOtp(phone: string): Promise<{ status: string; message: string }> {
+    return apiService.post<{ status: string; message: string }>(
+      '/auth/send-phone-otp',
+      { phone }
+    );
+  }
+
+  /**
+   * Verify phone OTP.
+   * POST /auth/verify-phone-otp
+   */
+  async verifyPhoneOtp(
+    phone: string,
+    otp: string
+  ): Promise<{ status: string; message: string }> {
+    return apiService.post<{ status: string; message: string }>(
+      '/auth/verify-phone-otp',
+      { phone, otp }
+    );
+  }
+
+  /**
+   * Resend phone OTP.
+   * POST /auth/resend-phone-otp
+   */
+  async resendPhoneOtp(phone: string): Promise<{ status: string; message: string }> {
+    return apiService.post<{ status: string; message: string }>(
+      '/auth/resend-phone-otp',
+      { phone }
+    );
   }
 }
 
