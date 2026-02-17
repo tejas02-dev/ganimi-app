@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/Colors';
 import { categoryService } from '@/services/category.service';
 import type { StudentCategory } from '@/types/category';
@@ -27,6 +28,7 @@ const CATEGORY_GRADIENTS: Record<string, [string, string]> = {
 };
 
 export default function BrowseCategoriesScreen() {
+  const router = useRouter();
   const [categories, setCategories] = useState<StudentCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -96,7 +98,16 @@ export default function BrowseCategoriesScreen() {
             </Text>
           </View>
 
-          <TouchableOpacity style={styles.primaryButton} activeOpacity={0.9}>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            activeOpacity={0.9}
+            onPress={() =>
+              router.push({
+                pathname: '/(student)/category/[categoryId]' as any,
+                params: { categoryId: item.id },
+              })
+            }
+          >
             <Ionicons name="eye-outline" size={16} color="#FFF" />
             <Text style={styles.primaryButtonText}>View</Text>
           </TouchableOpacity>

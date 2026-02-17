@@ -1,3 +1,14 @@
+// Service in a category (from GET /services/category/:id)
+export interface CategoryService {
+  id: string;
+  name: string;
+  description?: string;
+  categoryId?: string;
+  price?: number;
+  vendorName?: string;
+  vendorId?: string;
+}
+
 export interface VendorService {
   id: string;
   name: string;

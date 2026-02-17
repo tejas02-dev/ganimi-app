@@ -22,6 +22,12 @@ export function TopBar({ navigation, options }: TopBarProps) {
     }
   };
 
+  const goToProfile = () => {
+    if (navigation?.navigate) {
+      navigation.navigate('profile');
+    }
+  };
+
   const goToSettings = () => {
     if (navigation?.navigate) {
       navigation.navigate('settings');
@@ -31,10 +37,15 @@ export function TopBar({ navigation, options }: TopBarProps) {
   return (
     <View style={[styles.container, { paddingTop: insets.top || 12 }]}>
       <View style={styles.inner}>
-        {/* Left: Profile icon to open drawer */}
-        <TouchableOpacity onPress={openDrawer} style={styles.iconButton}>
-          <Ionicons name="person-circle-outline" size={26} color={Colors.text} />
-        </TouchableOpacity>
+        {/* Left: Hamburger opens drawer, Profile navigates to profile */}
+        <View style={styles.leftIcons}>
+          <TouchableOpacity onPress={openDrawer} style={styles.iconButton}>
+            <Ionicons name="menu" size={24} color={Colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={goToProfile} style={styles.iconButton}>
+            <Ionicons name="person-circle-outline" size={26} color={Colors.text} />
+          </TouchableOpacity>
+        </View>
 
         {/* Center: Title */}
         <Text style={styles.title} numberOfLines={1}>
@@ -61,6 +72,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingBottom: 10,
+  },
+  leftIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   iconButton: {
     padding: 4,

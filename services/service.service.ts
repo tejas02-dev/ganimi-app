@@ -1,4 +1,5 @@
 import { apiService } from './api';
+import type { CategoryService } from '@/types/service';
 import {
   VendorService,
   VendorServicesResponse,
@@ -74,6 +75,20 @@ class ServiceService {
    */
   async getVendorServices(): Promise<{ status: string; message: string; data: { id: string; name: string }[] }> {
     return apiService.get(`/vendor/services`);
+  }
+
+  /**
+   * Get all services in a category.
+   * Backend endpoint: GET /services/category/:id
+   */
+  async getServicesByCategory(categoryId: string): Promise<CategoryService[]> {
+    const response = await apiService.get<{
+      status: string;
+      services?: CategoryService[];
+      data?: CategoryService[];
+    }>(`/services/category/${categoryId}`);
+    const services = response.services ?? response.data ?? [];
+    return Array.isArray(services) ? services : [];
   }
 }
 

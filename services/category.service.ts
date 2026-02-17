@@ -26,6 +26,17 @@ class CategoryService {
     );
     return response.data;
   }
+
+  /**
+   * Check if student has access to a category.
+   * Backend endpoint: GET /student/category/:id
+   */
+  async checkStudentCategoryAccess(categoryId: string): Promise<boolean> {
+    const response = await apiService.get<{ status: string; access: boolean }>(
+      `/student/category/${categoryId}`
+    );
+    return response.access === true;
+  }
 }
 
 export const categoryService = new CategoryService();

@@ -109,7 +109,6 @@ export default function LoginScreen() {
           <Text style={styles.tagline}>TIP for life !</Text>
         </View>
 
-        <Text style={styles.brandName}>Ganimi Default</Text>
         <Text style={styles.subtitle}>Connect with expert service providers</Text>
 
         {/* Login Card */}
@@ -264,13 +263,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textSecondary,
     marginLeft: 4,
-  },
-  brandName: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: Colors.text,
-    textAlign: 'center',
-    marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,

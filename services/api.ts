@@ -9,6 +9,7 @@ interface ApiRequestOptions {
 
 class ApiService {
   private baseUrl: string;
+  private isRefreshing: boolean = false;
 
   constructor() {
     this.baseUrl = API_CONFIG.BASE_URL;
@@ -29,7 +30,66 @@ class ApiService {
     return parts.join('; ');
   }
 
-  async request<T>(endpoint: string, options: ApiRequestOptions): Promise<T> {
+  /**
+   * Refresh access token using refresh token.
+   * Returns true if refresh was successful, false otherwise.
+   */
+  private async refreshAccessToken(): Promise<boolean> {
+    if (this.isRefreshing) {
+      // Already refreshing, wait a bit and return false to prevent infinite loops
+      return false;
+    }
+
+    this.isRefreshing = true;
+    try {
+      const { refresh_token } = await tokenStorage.getBoth();
+      
+      if (!refresh_token) {
+        if (__DEV__) console.log('[API] No refresh token available for refresh');
+        return false;
+      }
+
+      // Call refresh-token endpoint with refresh_token in cookie
+      const refreshUrl = `${this.baseUrl}/auth/refresh-token`;
+      const refreshCookieHeader = this.buildCookieHeader(null, refresh_token);
+      
+      const refreshHeaders: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (refreshCookieHeader) {
+        refreshHeaders['Cookie'] = refreshCookieHeader;
+      }
+
+      const refreshResponse = await fetch(refreshUrl, {
+        method: 'POST',
+        headers: refreshHeaders,
+        credentials: 'omit',
+      });
+
+      const refreshData = await refreshResponse.json().catch(() => ({}));
+
+      if (!refreshResponse.ok) {
+        if (__DEV__) {
+          console.log('[API] Refresh token failed:', refreshData);
+        }
+        return false;
+      }
+
+      // Backend returns { status, message, data: { accessToken, refreshToken } } – save and replace old tokens
+      if (__DEV__) console.log('[API] Refresh successful, saving new tokens');
+      await tokenStorage.setTokensFromResponse(refreshData);
+      return true;
+    } catch (error) {
+      if (__DEV__) {
+        console.error('[API] Error refreshing token:', error);
+      }
+      return false;
+    } finally {
+      this.isRefreshing = false;
+    }
+  }
+
+  async request<T>(endpoint: string, options: ApiRequestOptions, retryOn401: boolean = true): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
 
     const { access_token, refresh_token } = await tokenStorage.getBoth();
@@ -70,10 +130,40 @@ class ApiService {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
+        // On 401, try refresh if we have a refresh token and this isn't the refresh endpoint
+        const shouldTryRefresh =
+          response.status === 401 &&
+          retryOn401 &&
+          !!refresh_token &&
+          !endpoint.startsWith('/auth/refresh-token');
+
+        if (shouldTryRefresh) {
+          if (__DEV__) {
+            console.log('[API] 401 received (code:', data.code, '), attempting token refresh...');
+          }
+
+          const refreshSuccess = await this.refreshAccessToken();
+          
+          if (refreshSuccess) {
+            // Retry the original request with new token
+            if (__DEV__) {
+              console.log('[API] Retrying original request after token refresh');
+            }
+            return this.request<T>(endpoint, options, false); // Don't retry again if this fails
+          } else {
+            // Refresh failed, throw original error
+            if (__DEV__) {
+              console.log('[API] Token refresh failed, throwing original error');
+            }
+          }
+        }
+
         throw {
           status: data.status || 'error',
           message: data.message || 'An error occurred',
           error: data.error,
+          code: data.code,
+          statusCode: response.status,
         };
       }
 

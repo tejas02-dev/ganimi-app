@@ -90,6 +90,26 @@ export const tokenStorage = {
     }
   },
 
+  /** Dev only: delete access token to test refresh flow */
+  async deleteAccessToken(): Promise<void> {
+    try {
+      await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
+      if (__DEV__) console.log('[TokenStorage] Access token deleted (dev)');
+    } catch (e) {
+      if (__DEV__) console.warn('[TokenStorage] deleteAccessToken failed', e);
+    }
+  },
+
+  /** Dev only: delete refresh token */
+  async deleteRefreshToken(): Promise<void> {
+    try {
+      await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+      if (__DEV__) console.log('[TokenStorage] Refresh token deleted (dev)');
+    } catch (e) {
+      if (__DEV__) console.warn('[TokenStorage] deleteRefreshToken failed', e);
+    }
+  },
+
   /**
    * Backend may return access_token or accessToken (same for refresh), top-level or under data.
    * We always store as access_token / refresh_token in secure storage.

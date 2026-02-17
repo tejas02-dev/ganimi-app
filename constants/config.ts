@@ -1,6 +1,6 @@
 // API Configuration
 export const API_CONFIG = {
-  BASE_URL: 'http://192.168.0.104:5500/api/v1', // Change this to your actual API URL
+  BASE_URL: 'http://192.168.0.106:5500/api/v1', // Change this to your actual API URL
   TIMEOUT: 30000,
 };
 
