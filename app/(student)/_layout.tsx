@@ -4,18 +4,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/Colors';
 import { useAuth } from '@/context/AuthContext';
 import { TopBar } from '@/components/TopBar';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   DrawerContentScrollView,
   DrawerItemList,
 } from '@react-navigation/drawer';
-import { tokenStorage } from '@/services/tokenStorage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Typography } from '@/constants/typography';
+import { BottomBar } from '@/components/BottomBar';
 
 function StudentDrawerContent(props: any) {
   const { user, logout } = useAuth();
   const router = useRouter();
   const [menuVisible, setMenuVisible] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const handleLogout = async () => {
     setMenuVisible(false);
@@ -29,37 +32,7 @@ function StudentDrawerContent(props: any) {
         {...props}
         contentContainerStyle={styles.drawerScroll}
       >
-        <View style={styles.logoContainer}>
-          <Text style={styles.logoText}>Ganimi</Text>
-          <Text style={styles.logoSubtitle}>Student</Text>
-        </View>
-        <Text style={styles.sectionLabel}>Main Navigation</Text>
-        <DrawerItemList {...props} />
-        {/* Temporary dev: clear tokens for testing refresh */}
-        <View style={styles.devSection}>
-          <Text style={styles.sectionLabel}>Dev (testing)</Text>
-          <TouchableOpacity
-            style={styles.devButton}
-            onPress={async () => {
-              await tokenStorage.deleteAccessToken();
-              Alert.alert('Done', 'Access token deleted. Next API call should trigger refresh.');
-            }}
-          >
-            <Text style={styles.devButtonText}>Delete access token</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.devButton}
-            onPress={async () => {
-              await tokenStorage.deleteRefreshToken();
-              Alert.alert('Done', 'Refresh token deleted.');
-            }}
-          >
-            <Text style={styles.devButtonText}>Delete refresh token</Text>
-          </TouchableOpacity>
-        </View>
-      </DrawerContentScrollView>
-
-      <View style={styles.userSection}>
+        <View style={[styles.userSection]}>
         <View style={styles.userAvatar}>
           <Text style={styles.userAvatarText}>
             {user?.name?.charAt(0)?.toUpperCase() ?? 'S'}
@@ -89,7 +62,7 @@ function StudentDrawerContent(props: any) {
         onRequestClose={() => setMenuVisible(false)}
       >
         <Pressable
-          style={styles.menuOverlay}
+          style={[styles.menuOverlay, { paddingBottom: 24 + (insets.bottom || 0) }]}
           onPress={() => setMenuVisible(false)}
         >
           <Pressable style={styles.menuCard} onPress={(e) => e.stopPropagation()}>
@@ -120,31 +93,36 @@ function StudentDrawerContent(props: any) {
           </Pressable>
         </Pressable>
       </Modal>
+        <DrawerItemList {...props} />
+      </DrawerContentScrollView>
+
+      
     </View>
   );
 }
 
 export default function StudentLayout() {
   return (
+    <>
     <Drawer
       screenOptions={{
         headerShown: true,
         header: (props) => <TopBar {...props} />,
-        drawerType: 'slide',
-        drawerActiveTintColor: '#FFFFFF',
+        drawerStyle: {
+          width: '80%',
+        },
+        drawerType: 'front',
+        drawerActiveTintColor: Colors.drawerActiveTintColor,
         drawerInactiveTintColor: Colors.textSecondary,
-        drawerActiveBackgroundColor: Colors.primary,
+        drawerActiveBackgroundColor: Colors.drawerActive,
         drawerLabelStyle: {
           fontSize: 14,
-          fontWeight: '500',
+          fontFamily: Typography.fontFamily.semiBold,
         },
         drawerItemStyle: {
-          borderRadius: 10,
+          borderRadius: 20,
           marginVertical: 2,
           paddingVertical: 0,
-        },
-        sceneContainerStyle: {
-          backgroundColor: Colors.background,
         },
       }}
       drawerContent={(props) => <StudentDrawerContent {...props} />}
@@ -154,7 +132,7 @@ export default function StudentLayout() {
         options={{
           title: 'Dashboard',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" size={size} color={color} />
+            <Ionicons name="grid" size={size} color={color} />
           ),
         }}
       />
@@ -163,7 +141,7 @@ export default function StudentLayout() {
         options={{
           title: 'Profile',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
+            <Ionicons name="person" size={size} color={color} />
           ),
         }}
       />
@@ -172,7 +150,7 @@ export default function StudentLayout() {
         options={{
           title: 'Browse Categories',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="grid-outline" size={size} color={color} />
+            <Ionicons name="grid" size={size} color={color} />
           ),
         }}
       />
@@ -181,7 +159,7 @@ export default function StudentLayout() {
         options={{
           title: 'Vendor Directory',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="business-outline" size={size} color={color} />
+            <Ionicons name="business" size={size} color={color} />
           ),
         }}
       />
@@ -190,7 +168,7 @@ export default function StudentLayout() {
         options={{
           title: 'My Services',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="briefcase-outline" size={size} color={color} />
+            <Ionicons name="briefcase" size={size} color={color} />
           ),
         }}
       />
@@ -199,7 +177,16 @@ export default function StudentLayout() {
         options={{
           title: 'My Orders',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="cart-outline" size={size} color={color} />
+            <Ionicons name="cart" size={size} color={color} />
+          ),
+        }}
+      />
+      <Drawer.Screen
+        name="live"
+        options={{
+          title: 'Live Sessions',
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="videocam" size={size} color={color} />
           ),
         }}
       />
@@ -208,7 +195,7 @@ export default function StudentLayout() {
         options={{
           title: 'Reports',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="bar-chart-outline" size={size} color={color} />
+            <Ionicons name="bar-chart" size={size} color={color} />
           ),
         }}
       />
@@ -217,7 +204,7 @@ export default function StudentLayout() {
         options={{
           title: 'Favorites',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="heart-outline" size={size} color={color} />
+            <Ionicons name="heart" size={size} color={color} />
           ),
         }}
       />
@@ -226,7 +213,7 @@ export default function StudentLayout() {
         options={{
           title: 'Notifications',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="notifications-outline" size={size} color={color} />
+            <Ionicons name="notifications" size={size} color={color} />
           ),
         }}
       />
@@ -235,7 +222,7 @@ export default function StudentLayout() {
         options={{
           title: 'Reminders',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="time-outline" size={size} color={color} />
+            <Ionicons name="time" size={size} color={color} />
           ),
         }}
       />
@@ -244,7 +231,7 @@ export default function StudentLayout() {
         options={{
           title: 'Settings',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="settings-outline" size={size} color={color} />
+            <Ionicons name="settings" size={size} color={color} />
           ),
         }}
       />
@@ -253,7 +240,7 @@ export default function StudentLayout() {
         options={{
           title: 'Events',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="calendar-outline" size={size} color={color} />
+            <Ionicons name="calendar" size={size} color={color} />
           ),
         }}
       />
@@ -262,7 +249,7 @@ export default function StudentLayout() {
         options={{
           title: 'Contact Us',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="call-outline" size={size} color={color} />
+            <Ionicons name="call" size={size} color={color} />
           ),
         }}
       />
@@ -271,40 +258,55 @@ export default function StudentLayout() {
         options={{
           title: 'Support',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="help-circle-outline" size={size} color={color} />
+            <Ionicons name="help-circle" size={size} color={color} />
           ),
         }}
       />
-      {/* Hidden detail routes (still navigable, not shown in drawer) */}
+      <Drawer.Screen
+        name="(tabs)"
+        options={{
+          drawerItemStyle: { display: 'none' },
+        }}
+      />
+      <Drawer.Screen
+        name="menu"
+        options={{
+          drawerItemStyle: { display: 'none' },
+        }}
+      />
+      <Drawer.Screen
+        name="index"
+        options={{
+          drawerItemStyle: { display: 'none' },
+        }}
+      />
       <Drawer.Screen
         name="category/[categoryId]"
         options={{
-          href: null,
           drawerItemStyle: { display: 'none' },
         }}
       />
       <Drawer.Screen
         name="course/[courseId]"
         options={{
-          href: null,
           drawerItemStyle: { display: 'none' },
         }}
       />
       <Drawer.Screen
         name="service/[serviceId]"
         options={{
-          href: null,
           drawerItemStyle: { display: 'none' },
         }}
       />
       <Drawer.Screen
         name="service/[serviceId]/book"
         options={{
-          href: null,
           drawerItemStyle: { display: 'none' },
         }}
       />
     </Drawer>
+    <BottomBar />
+    </>
   );
 }
 
@@ -333,36 +335,17 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textTransform: 'uppercase',
   },
-  devSection: {
-    marginTop: 16,
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-  },
-  devButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: Colors.backgroundSecondary,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  devButtonText: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    fontWeight: '500',
-  },
   userSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
     paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    backgroundColor: '#F9FAFB',
+    marginBottom: 12,
+    backgroundColor: Colors.white,
   },
   userAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
@@ -376,12 +359,14 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   userName: {
+    fontFamily: Typography.fontFamily.semiBold,
     fontSize: 14,
     fontWeight: '600',
     color: Colors.text,
   },
   userEmail: {
     fontSize: 12,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
   },
   menuButton: {
@@ -430,11 +415,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: Colors.text,
+    fontFamily: Typography.fontFamily.semiBold,
+    top: -2,
   },
   menuUserEmail: {
     fontSize: 13,
     color: Colors.textSecondary,
-    marginTop: 2,
+    fontFamily: Typography.fontFamily.regular,
+    top: -4,
   },
   menuSeparator: {
     height: 1,
@@ -445,11 +433,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    justifyContent: 'center',
   },
   menuLogoutText: {
+    top: -2,
     fontSize: 16,
-    fontWeight: '500',
     color: Colors.error,
+    fontFamily: Typography.fontFamily.semiBold,
   },
 });
-

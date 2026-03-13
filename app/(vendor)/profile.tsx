@@ -132,7 +132,6 @@ export default function VendorProfileScreen() {
         authService.getVendorOnboardingStatus(),
       ]);
 
-      console.log('[VendorProfile] /auth/user response', profileRes);
       const vendor = profileRes.data;
 
       if (__DEV__) {

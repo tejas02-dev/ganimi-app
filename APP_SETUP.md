@@ -222,7 +222,6 @@ function MyComponent() {
   const { user, isAuthenticated, login, logout } = useAuth();
   
   // Access user data
-  console.log(user?.name);
   
   // Check auth status
   if (isAuthenticated) {

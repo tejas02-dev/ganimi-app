@@ -60,7 +60,6 @@ export default function VendorBookingsScreen() {
     try {
       setError(null);
       const res = await bookingService.getMyBookings();
-      console.log('res', res);
       const list = (res as any).data ?? res?.data ?? [];
       setBookings(Array.isArray(list) ? list : []);
     } catch (e: any) {

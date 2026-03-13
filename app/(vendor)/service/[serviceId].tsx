@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -82,13 +83,15 @@ export default function VendorServiceDetailScreen() {
   }, [serviceId]);
 
   // Ensure Android hardware back goes to My Services instead of dashboard
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      router.replace('/(vendor)/services' as any);
-      return true;
-    });
-    return () => sub.remove();
-  }, [router]);
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        router.replace('/(vendor)/services' as any);
+        return true;
+      });
+      return () => sub.remove();
+    }, [router])
+  );
 
   const loadData = async (id: string) => {
     try {

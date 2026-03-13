@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -8,18 +9,21 @@ import {
   ActivityIndicator,
   Alert,
   Share,
+  BackHandler,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '@/constants/Colors';
 import { serviceService } from '@/services/service.service';
+import { categoryService } from '@/services/category.service';
 import { batchService, type ServiceBatch } from '@/services/batch.service';
 import { orderService } from '@/services/order.service';
 import { initiateServicePayment } from '@/services/razorpay.service';
 import type { VendorService } from '@/types/service';
+import { Typography } from '@/constants/typography';
 
-type Params = { serviceId: string };
+type Params = { serviceId: string; fromCategoryId?: string };
 
 function formatPrice(price?: number | string | null): string {
   if (price == null || price === '') return '—';
@@ -43,7 +47,7 @@ function formatTimeRange(start?: string | null, end?: string | null): string {
 export const options = { href: null };
 
 export default function BookServiceScreen() {
-  const { serviceId } = useLocalSearchParams<Params>();
+  const { serviceId, fromCategoryId } = useLocalSearchParams<Params>();
   const router = useRouter();
   const [service, setService] = useState<VendorService | null>(null);
   const [batches, setBatches] = useState<ServiceBatch[]>([]);
@@ -52,6 +56,7 @@ export default function BookServiceScreen() {
   const [booking, setBooking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isFavourite, setIsFavourite] = useState(false);
+  const [hasCategoryAccess, setHasCategoryAccess] = useState<boolean | null>(null);
 
   const loadData = useCallback(async () => {
     if (!serviceId) return;
@@ -71,9 +76,6 @@ export default function BookServiceScreen() {
             : null;
       setService(svc ?? null);
       setBatches(batchesRes.data ?? []);
-      if (!selectedBatch && batchesRes.data?.length) {
-        setSelectedBatch(batchesRes.data[0] ?? null);
-      }
     } catch (e: any) {
       console.error('[BookService] Failed to load', e);
       setError(e?.message ?? 'Unable to load service. Please try again.');
@@ -87,6 +89,46 @@ export default function BookServiceScreen() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // If we know the category, check whether the student has access to it
+  useEffect(() => {
+    let isMounted = true;
+    const checkAccess = async () => {
+      if (!fromCategoryId) {
+        setHasCategoryAccess(null);
+        return;
+      }
+      try {
+        const access = await categoryService.checkStudentCategoryAccess(fromCategoryId);
+        if (isMounted) {
+          setHasCategoryAccess(access);
+        }
+      } catch {
+        if (isMounted) {
+          setHasCategoryAccess(false);
+        }
+      }
+    };
+    checkAccess();
+    return () => {
+      isMounted = false;
+    };
+  }, [fromCategoryId]);
+
+  // If we know which category we came from, override Android back to return there
+  useFocusEffect(
+    useCallback(() => {
+      if (!fromCategoryId) return;
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        router.replace({
+          pathname: '/(student)/category/[categoryId]' as any,
+          params: { categoryId: fromCategoryId },
+        } as any);
+        return true;
+      });
+      return () => sub.remove();
+    }, [fromCategoryId, router])
+  );
 
   const handleShare = async () => {
     if (!service) return;
@@ -157,55 +199,76 @@ export default function BookServiceScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Service header: title, rating, availability, favourite, share */}
-      <View style={styles.header}>
-        <View style={styles.titleRow}>
-          <Text style={styles.serviceTitle} numberOfLines={2}>
-            {service.name}
-          </Text>
-          <View style={styles.iconRow}>
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => setIsFavourite((f) => !f)}
-              hitSlop={8}
-            >
-              <Ionicons
-                name={isFavourite ? 'heart' : 'heart-outline'}
-                size={24}
-                color={isFavourite ? '#DC2626' : Colors.textSecondary}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconBtn} onPress={handleShare} hitSlop={8}>
-              <Ionicons name="share-outline" size={24} color={Colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-        </View>
-        <View style={styles.metaRow}>
-          <View style={styles.ratingWrap}>
-            <Ionicons name="star" size={16} color="#F59E0B" />
-            <Text style={styles.ratingText}>4.8 (127 reviews)</Text>
-          </View>
-          <View style={styles.dot} />
-          <Text style={styles.availableText}>Available</Text>
+    <View style={styles.screen}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+      {/* Top card with image placeholder + title + chips */}
+      <View style={styles.heroCard}>
+        <View style={styles.heroImage}>
+          <Ionicons
+            name="image"
+            size={32}
+            color={Colors.primary}
+            style={styles.heroImageIcon}
+          />
         </View>
       </View>
+      <View style={styles.heroContent}>
+          <View style={styles.heroTitleRow}>
+            <Text style={styles.serviceTitle} numberOfLines={2}>
+              {service.name}
+            </Text>
+            <View style={styles.iconRow}>
+              <TouchableOpacity
+                style={styles.iconBtn}
+                onPress={() => setIsFavourite((f) => !f)}
+                hitSlop={8}
+              >
+                <Ionicons
+                  name={isFavourite ? 'heart' : 'heart-outline'}
+                  size={22}
+                  color={isFavourite ? '#DC2626' : Colors.textSecondary}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.iconBtn} onPress={handleShare} hitSlop={8}>
+                <Ionicons name="share-outline" size={22} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          </View>
+          <View style={styles.chipRow}>
+            <View style={styles.ratingChip}>
+              <Ionicons name="star" size={14} color={Colors.warning} />
+              <Text style={styles.ratingChipText}>4.8 (120 reviews)</Text>
+            </View>
+          </View>
+        </View>
 
+      <View style={styles.spacer}></View>
+    
       {/* Choose Your Batch */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Choose Your Batch</Text>
-        <Text style={styles.sectionSubtitle}>
-          Select from {batches.length} available batch{batches.length !== 1 ? 'es' : ''}
-        </Text>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Select a Batch</Text>
+          <Text style={styles.sectionHint}>AVAILABLE BATCHES</Text>
+        </View>
         {batches.length === 0 ? (
           <Text style={styles.noBatches}>No batches available at the moment.</Text>
         ) : (
           batches.map((batch) => {
             const isSelected = selectedBatch?.id === batch.id;
+            const capacity = batch.capacity ?? undefined;
+            let availabilityText = 'Batch availability not specified';
+            if (capacity === 0) {
+              availabilityText = 'Batch full';
+            } else if (capacity === 1) {
+              availabilityText = 'Only 1 slot left!';
+            } else if (typeof capacity === 'number') {
+              availabilityText = `${capacity} slots remaining`;
+            }
+
             return (
               <TouchableOpacity
                 key={batch.id}
@@ -214,33 +277,23 @@ export default function BookServiceScreen() {
                 activeOpacity={0.8}
               >
                 <View style={styles.batchCardHeader}>
-                  <Text style={styles.batchName}>{batch.name}</Text>
+                  <View>
+                    <Text style={[styles.batchDays, isSelected && styles.batchDaysSelected]}>
+                      {formatDays(batch.daysOfWeek)}
+                    </Text>
+                    <Text style={styles.batchTime}>
+                      {formatTimeRange(batch.startTime, batch.endTime)}
+                    </Text>
+                  </View>
                   {isSelected && (
                     <View style={styles.checkBadge}>
                       <Ionicons name="checkmark" size={16} color="#FFF" />
                     </View>
                   )}
                 </View>
-                <View style={styles.batchMeta}>
-                  <View style={styles.batchMetaRow}>
-                    <Ionicons name="calendar-outline" size={16} color={Colors.textSecondary} />
-                    <Text style={styles.batchMetaText}>{formatDays(batch.daysOfWeek)}</Text>
-                  </View>
-                  <View style={styles.batchMetaRow}>
-                    <Ionicons name="time-outline" size={16} color={Colors.textSecondary} />
-                    <Text style={styles.batchMetaText}>
-                      {formatTimeRange(batch.startTime, batch.endTime)}
-                    </Text>
-                  </View>
-                  <View style={styles.batchMetaRow}>
-                    <Ionicons name="people-outline" size={16} color={Colors.textSecondary} />
-                    <Text style={styles.batchMetaText}>
-                      {batch.ageGroup ? `Age: ${batch.ageGroup}` : ''}
-                      {batch.ageGroup && batch.capacity != null ? ' • ' : ''}
-                      {batch.capacity != null ? `Seats: ${batch.capacity}` : ''}
-                      {!batch.ageGroup && batch.capacity == null ? '—' : ''}
-                    </Text>
-                  </View>
+                <View style={styles.batchMetaRow}>
+                  <Ionicons name="people-outline" size={16} color={Colors.textSecondary} />
+                  <Text style={styles.batchMetaText}>{availabilityText}</Text>
                 </View>
                 <View style={styles.batchPriceRow}>
                   <Text style={styles.batchPriceLabel}>Batch Price</Text>
@@ -252,85 +305,48 @@ export default function BookServiceScreen() {
         )}
       </View>
 
-      {/* Booking Summary */}
-      {selectedBatch && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Booking Summary</Text>
-          <Text style={styles.sectionSubtitle}>Review your selection and book now</Text>
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryCardHeader}>
-              <Text style={styles.summaryCardTitle}>Selected Batch</Text>
-              <View style={styles.checkBadge}>
-                <Ionicons name="checkmark" size={14} color="#FFF" />
-              </View>
-            </View>
-            <Text style={styles.summaryBatchName}>{selectedBatch.name}</Text>
-            <View style={styles.summaryMeta}>
-              <View style={styles.batchMetaRow}>
-                <Ionicons name="calendar-outline" size={14} color={Colors.textSecondary} />
-                <Text style={styles.batchMetaText}>{formatDays(selectedBatch.daysOfWeek)}</Text>
-              </View>
-              <View style={styles.batchMetaRow}>
-                <Ionicons name="time-outline" size={14} color={Colors.textSecondary} />
-                <Text style={styles.batchMetaText}>
-                  {formatTimeRange(selectedBatch.startTime, selectedBatch.endTime)}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.batchPriceRow}>
-              <Text style={styles.batchPriceLabel}>Batch Price</Text>
-              <Text style={styles.batchPriceValue}>{formatPrice(selectedBatch.price)}</Text>
-            </View>
+     
+      {/* spacer so content isn't hidden behind footer */}
+      <View style={{ height: 120 }} />
+      </ScrollView>
+
+      {/* Sticky bottom price + Book button */}
+      {batches.length > 0 && (
+        <View style={styles.footerBar}>
+          <View>
+            <Text style={styles.footerLabel}>Total Price</Text>
+            {selectedBatch ? (
+              <Text style={styles.footerPrice}>{formatPrice(totalAmount)}</Text>
+            ) : (
+              <Text style={styles.footerHint}>Select a batch to see price</Text>
+            )}
           </View>
-          <View style={styles.pricingCard}>
-            <Text style={styles.pricingTitle}>Pricing Details</Text>
-            <View style={styles.pricingRow}>
-              <Text style={styles.pricingLabel}>Service Base Price</Text>
-              <Text style={styles.pricingValue}>{formatPrice(service.price)}</Text>
-            </View>
-            <View style={styles.pricingRow}>
-              <Text style={styles.pricingLabel}>Selected Batch</Text>
-              <Text style={styles.pricingValue}>{formatPrice(selectedBatch.price)}</Text>
-            </View>
-            <View style={styles.pricingDivider} />
-            <View style={styles.pricingRow}>
-              <Text style={styles.pricingLabelBold}>Total Amount</Text>
-              <Text style={styles.pricingTotal}>{formatPrice(totalAmount)}</Text>
-            </View>
-          </View>
+          <TouchableOpacity
+            style={[
+              styles.footerButton,
+              ((!selectedBatch || booking) || hasCategoryAccess === false) && styles.footerButtonDisabled,
+            ]}
+            onPress={handleBookNow}
+            disabled={!selectedBatch || booking || hasCategoryAccess === false}
+            activeOpacity={0.9}
+          >
+            {booking ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <Text style={styles.footerButtonText}>Book Now</Text>
+            )}
+          </TouchableOpacity>
         </View>
       )}
-
-      {/* Book Now button */}
-      <TouchableOpacity
-        style={[styles.bookBtn, (!selectedBatch || booking) && styles.bookBtnDisabled]}
-        onPress={handleBookNow}
-        disabled={!selectedBatch || booking}
-        activeOpacity={0.9}
-      >
-        <LinearGradient
-          colors={['#2563EB', '#7C3AED']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.bookBtnGradient}
-        >
-          {booking ? (
-            <ActivityIndicator size="small" color="#FFF" />
-          ) : (
-            <>
-              <Ionicons name="cart-outline" size={22} color="#FFF" />
-              <Text style={styles.bookBtnText}>Book Now</Text>
-            </>
-          )}
-        </LinearGradient>
-      </TouchableOpacity>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  scrollContent: { padding: 16, paddingBottom: 40 },
+  screen: { flex: 1, backgroundColor: Colors.background },
+  spacer: { borderBottomWidth: 1, borderColor: Colors.border, height: 8 },
+  container: { flex: 1 },
+  scrollContent: { padding: 16, paddingBottom: 16 },
   centerContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -343,71 +359,179 @@ const styles = StyleSheet.create({
   retryBtn: { marginTop: 20, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: Colors.primary, borderRadius: 10 },
   retryBtnText: { fontSize: 15, fontWeight: '600', color: '#FFF' },
 
-  header: { marginBottom: 24 },
-  titleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
-  serviceTitle: { flex: 1, fontSize: 24, fontWeight: '700', color: Colors.text },
+  heroCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  heroImage: {
+    height: 150,
+    backgroundColor: Colors.backgroundSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroImageIcon: {
+    backgroundColor: Colors.primaryLight,
+    borderRadius: 999,
+    padding: 14,
+  },
+  heroContent: {
+    paddingTop: 16,
+    paddingBottom: 4,
+  },
+  heroTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  serviceTitle: {
+    flex: 1,
+    fontSize: 20,
+    fontFamily: Typography.fontFamily.extraBold,
+    color: Colors.text,
+  },
   iconRow: { flexDirection: 'row', gap: 8 },
   iconBtn: { padding: 4 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
-  ratingWrap: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  ratingText: { fontSize: 14, color: Colors.textSecondary, fontWeight: '500' },
-  dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: Colors.textLight, marginHorizontal: 8 },
-  availableText: { fontSize: 14, fontWeight: '600', color: Colors.success },
+  chipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  ratingChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: Colors.white,
+  },
+  ratingChipText: {
+    top:-1,
+    marginLeft: 4,
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.semiBold,
+  },
+  categoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#EEF2FF',
+  },
+  categoryChipText: {
+    marginLeft: 6,
+    fontSize: 13,
+    color: Colors.text,
+    fontWeight: '600',
+  },
 
-  section: { marginBottom: 28 },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: Colors.text },
-  sectionSubtitle: { fontSize: 14, color: Colors.textSecondary, marginTop: 4, marginBottom: 14 },
-  noBatches: { fontSize: 14, color: Colors.textSecondary, fontStyle: 'italic' },
+  section: { marginBottom: 16, marginTop: 12 },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  sectionTitle: { fontSize: 18, fontFamily: Typography.fontFamily.extraBold, color: Colors.text },
+  sectionHint: {
+    fontSize: 12,
+    letterSpacing: 1,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: Colors.textSecondary,
+    textTransform: 'uppercase',
+  },
+  noBatches: { fontSize: 14, fontFamily: Typography.fontFamily.semiBold, color: Colors.textSecondary },
 
   batchCard: {
     backgroundColor: '#FFF',
-    borderRadius: 14,
-    padding: 16,
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     marginBottom: 12,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: Colors.border,
   },
-  batchCardSelected: { borderColor: Colors.primary, backgroundColor: '#EFF6FF' },
-  batchCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  batchName: { fontSize: 17, fontWeight: '700', color: Colors.text },
-  checkBadge: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#7C3AED', justifyContent: 'center', alignItems: 'center' },
+  batchCardSelected: { borderColor: Colors.primary, backgroundColor: '#EEF2FF' },
+  batchCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  batchDays: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: Colors.textSecondary,
+  },
+  batchDaysSelected: {
+    color: Colors.primary,
+  },
+  batchTime: {
+    marginTop: 4,
+    fontSize: 18,
+    fontFamily: Typography.fontFamily.extraBold,
+    color: Colors.text,
+  },
+  checkBadge: { width: 24, height: 24, borderRadius: 12, backgroundColor: Colors.primary, justifyContent: 'center', alignItems: 'center' },
   batchMeta: { gap: 6 },
   batchMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  batchMetaText: { fontSize: 14, color: Colors.textSecondary },
+  batchMetaText: { fontSize: 14, fontFamily: Typography.fontFamily.semiBold, color: Colors.textSecondary },
   batchPriceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: Colors.border },
-  batchPriceLabel: { fontSize: 13, color: Colors.textSecondary },
-  batchPriceValue: { fontSize: 18, fontWeight: '700', color: Colors.success },
-
-  summaryCard: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: Colors.primary,
-  },
-  summaryCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  summaryCardTitle: { fontSize: 15, fontWeight: '600', color: Colors.text },
-  summaryBatchName: { fontSize: 16, fontWeight: '700', color: Colors.text, marginBottom: 8 },
-  summaryMeta: { gap: 4 },
-
-  pricingCard: {
+  batchPriceLabel: { fontSize: 13, fontFamily: Typography.fontFamily.semiBold, color: Colors.textSecondary },
+  batchPriceValue: { fontSize: 18, fontFamily: Typography.fontFamily.extraBold, color: Colors.success },
+  footerBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     backgroundColor: '#FFF',
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
   },
-  pricingTitle: { fontSize: 15, fontWeight: '600', color: Colors.text, marginBottom: 12 },
-  pricingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  pricingLabel: { fontSize: 14, color: Colors.textSecondary },
-  pricingValue: { fontSize: 14, color: Colors.text },
-  pricingDivider: { height: 1, backgroundColor: Colors.border, marginVertical: 10 },
-  pricingLabelBold: { fontSize: 15, fontWeight: '700', color: Colors.text },
-  pricingTotal: { fontSize: 18, fontWeight: '700', color: Colors.success },
-
-  bookBtn: { overflow: 'hidden', borderRadius: 14, marginTop: 8 },
-  bookBtnDisabled: { opacity: 0.6 },
-  bookBtnGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16 },
-  bookBtnText: { fontSize: 17, fontWeight: '700', color: '#FFF' },
+  footerLabel: {
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.semiBold,
+  },
+  footerPrice: {
+    fontSize: 20,
+    color: Colors.success,
+    fontFamily: Typography.fontFamily.extraBold,
+  },
+  footerHint: {
+    marginTop: 4,
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
+  },
+  footerButton: {
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: Colors.primary,
+  },
+  footerButtonDisabled: {
+    opacity: 0.6,
+  },
+  footerButtonText: {
+    fontSize: 15,
+    color: Colors.white,
+    fontFamily: Typography.fontFamily.semiBold,
+  },
 });

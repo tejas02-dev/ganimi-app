@@ -9,6 +9,7 @@ import {
   TextInput,
   ActivityIndicator,
   Image,
+  RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
@@ -18,6 +19,7 @@ import { authService } from '@/services/auth.service';
 import type { Gender } from '@/types/auth';
 type StudentSectionKey = 'personal' | 'guardian' | 'password' | null;
 import * as ImagePicker from 'expo-image-picker';
+import { Typography } from '@/constants/typography';
 
 export default function StudentProfileScreen() {
   const router = useRouter();
@@ -274,6 +276,14 @@ export default function StudentProfileScreen() {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={isLoading}
+              onRefresh={loadProfile}
+              colors={[Colors.primary]}
+              tintColor={Colors.primary}
+            />
+          }
         >
           {/* Header card with profile image and actions */}
           <View style={styles.headerCard}>
@@ -303,7 +313,7 @@ export default function StudentProfileScreen() {
                 style={styles.uploadButton}
                 onPress={handlePickPhoto}
               >
-                <Ionicons name="attach-outline" size={16} color={Colors.text} />
+                <Ionicons name="attach-outline" size={20} color={Colors.text} style={styles.uploadButtonIcon} />
                 <Text style={styles.uploadButtonText}>Upload New Photo</Text>
               </TouchableOpacity>
 
@@ -324,8 +334,6 @@ export default function StudentProfileScreen() {
               </Text>
             </View>
           </View>
-
-          
 
           {/* Completion / onboarding status */}
           <View style={styles.completionCard}>
@@ -367,10 +375,10 @@ export default function StudentProfileScreen() {
               onPress={() => setExpandedSection(expandedSection === 'personal' ? null : 'personal')}
             >
               <View style={styles.cardHeaderContent}>
-                <Text style={styles.cardTitle}>Personal Information</Text>
-                <Text style={styles.cardSubtitle}>
-                  Update your basic details used across the app.
-                </Text>
+                <View style={styles.cardIconPill}>
+                  <Ionicons name="person-outline" size={18} color={Colors.primary} />
+                </View>
+                <Text style={styles.cardTitle}>Personal Details</Text>
               </View>
               <Ionicons
                 name={expandedSection === 'personal' ? 'chevron-up-outline' : 'chevron-down-outline'}
@@ -539,10 +547,10 @@ export default function StudentProfileScreen() {
               onPress={() => setExpandedSection(expandedSection === 'guardian' ? null : 'guardian')}
             >
               <View style={styles.cardHeaderContent}>
-                <Text style={styles.cardTitle}>Parents/Guardian Information</Text>
-                <Text style={styles.cardSubtitle}>
-                  Keep your guardian details up to date for communication.
-                </Text>
+                <View style={styles.cardIconPill}>
+                  <Ionicons name="people-outline" size={18} color={Colors.primary} />
+                </View>
+                <Text style={styles.cardTitle}>Parents / Guardian</Text>
               </View>
               <Ionicons
                 name={expandedSection === 'guardian' ? 'chevron-up-outline' : 'chevron-down-outline'}
@@ -696,10 +704,10 @@ export default function StudentProfileScreen() {
               onPress={() => setExpandedSection(expandedSection === 'password' ? null : 'password')}
             >
               <View style={styles.cardHeaderContent}>
-                <Text style={styles.cardTitle}>Change Password</Text>
-                <Text style={styles.cardSubtitle}>
-                  Update your account password to keep your account secure.
-                </Text>
+                <View style={styles.cardIconPill}>
+                  <Ionicons name="lock-closed-outline" size={18} color={Colors.primary} />
+                </View>
+                <Text style={styles.cardTitle}>Security</Text>
               </View>
               <Ionicons
                 style={styles.cardHeaderIcon}
@@ -768,7 +776,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   scrollContent: {
-    padding: 16,
     paddingBottom: 32,
   },
   centerContainer: {
@@ -782,21 +789,16 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   headerCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 20,
     padding: 20,
     marginBottom: 16,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
   },
   avatarWrapper: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 80,
+    height: 80,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 40,
     overflow: 'hidden',
     backgroundColor: Colors.backgroundSecondary,
     alignItems: 'center',
@@ -814,8 +816,8 @@ const styles = StyleSheet.create({
   },
   avatarFallbackText: {
     fontSize: 20,
-    fontWeight: '700',
-    color: Colors.primary,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.text,
   },
   headerTextCol: {
     alignItems: 'center',
@@ -823,47 +825,54 @@ const styles = StyleSheet.create({
   },
   headerName: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
     marginBottom: 2,
   },
   headerEmail: {
     fontSize: 13,
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.medium,
   },
   photoActions: {
     marginTop: 12,
     width: '100%',
-    alignItems: 'center',
+    alignItems: 'stretch',
+  },
+  uploadButtonIcon: {
   },
   uploadButton: {
+    width: '50%',
+    alignSelf: 'center',
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.border,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.backgroundSecondary,
     marginBottom: 8,
     gap: 6,
   },
   uploadButtonText: {
     fontSize: 14,
-    fontWeight: '500',
+    top:-2,
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.text,
   },
   savePhotoButton: {
-    paddingVertical: 10,
+    width: '50%',
+    alignSelf: 'center',
+    paddingVertical: 8,
     paddingHorizontal: 32,
-    borderRadius: 999,
+    borderRadius: 16,
     backgroundColor: Colors.primary,
     marginBottom: 6,
   },
   savePhotoButtonText: {
+    textAlign: 'center',
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.medium,
     color: '#FFF',
   },
   photoHelperText: {
@@ -875,18 +884,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     borderRadius: 16,
     padding: 16,
+    marginHorizontal: 16,
     marginBottom: 16,
     flexDirection: 'column',
     gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
   },
   completionTitle: {
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
     textAlign: 'left',
   },
@@ -915,8 +920,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary,
   },
   progressText: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.primary,
   },
   completionList: {
@@ -930,18 +935,22 @@ const styles = StyleSheet.create({
   },
   completionText: {
     fontSize: 13,
+    fontFamily: Typography.fontFamily.medium,
   },
   completionTextDone: {
     color: Colors.text,
     textDecorationLine: 'none',
+    fontFamily: Typography.fontFamily.medium,
   },
   completionTextPending: {
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.medium,
   },
   card: {
     backgroundColor: '#FFF',
     borderRadius: 16,
     padding: 16,
+    marginHorizontal: 16,
     marginBottom: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -951,12 +960,13 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
   },
   cardSubtitle: {
     fontSize: 13,
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.medium,
   },
   fieldGroup: {
     marginBottom: 12,
@@ -967,8 +977,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   cardHeaderContent: {
-    maxWidth: '95%',
-    flex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  cardIconPill: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cardHeaderIcon: {
   },
@@ -977,19 +997,20 @@ const styles = StyleSheet.create({
   },
   fieldLabel: {
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.text,
     marginBottom: 6,
   },
   input: {
-    borderRadius: 10,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.border,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
-    color: Colors.text,
-    backgroundColor: '#F9FAFB',
+    color: Colors.textSecondary,
+    backgroundColor: Colors.backgroundSecondary,
+
   },
   readonlyInput: {
     justifyContent: 'center',
@@ -1029,7 +1050,7 @@ const styles = StyleSheet.create({
   saveButton: {
     marginTop: 8,
     paddingVertical: 12,
-    borderRadius: 999,
+    borderRadius: 16,
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1040,7 +1061,7 @@ const styles = StyleSheet.create({
   saveButtonText: {
     color: '#FFF',
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.medium,
   },
   logoutButton: {
     marginTop: 8,

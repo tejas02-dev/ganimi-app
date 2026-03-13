@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "ganimi",
+    "name": "Ganimi",
     "slug": "ganimi",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.jpg",
+    "icon": "./assets/images/icon.png",
     "scheme": "ganimi",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -12,17 +12,25 @@
       "supportsTablet": true
     },
     "android": {
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/icon.jpg"
+        "backgroundColor": "#000000",
+        "foregroundImage": "./assets/images/adaptive-icon.png"
       },
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES",
+        "INTERNET",
+        "CAMERA",
+        "RECORD_AUDIO"
+      ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.ganimi"
+      "package": "com.ganimi.app"
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/icon.jpg"
+      "favicon": "./assets/images/ganimi-logo.png"
     },
     "plugins": [
       "expo-router",
@@ -38,7 +46,16 @@
           }
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 28,
+            "networkSecurityConfig": false
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

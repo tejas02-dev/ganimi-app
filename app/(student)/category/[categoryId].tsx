@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -8,8 +9,10 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  BackHandler,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '@/constants/Colors';
@@ -17,6 +20,7 @@ import { categoryService } from '@/services/category.service';
 import { serviceService } from '@/services/service.service';
 import { orderService } from '@/services/order.service';
 import { initiateCategoryPayment } from '@/services/razorpay.service';
+import { Typography } from '@/constants/typography';
 import type { Category } from '@/types/category';
 import type { CategoryService } from '@/types/service';
 
@@ -70,6 +74,18 @@ export default function CategoryServicesScreen() {
     loadData();
   }, [categoryId, loadData]);
 
+  // Ensure back (hardware or gesture) goes to Browse Categories, not dashboard
+  // useFocusEffect re-registers whenever the screen gains focus (e.g. returning from book page)
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        router.navigate('/(student)/browse-categories' as any);
+        return true;
+      });
+      return () => sub.remove();
+    }, [router])
+  );
+
   const handleRefresh = () => {
     setIsRefreshing(true);
     loadData();
@@ -78,7 +94,7 @@ export default function CategoryServicesScreen() {
   const handleSeeDetails = (service: CategoryService) => {
     router.push({
       pathname: '/(student)/service/[serviceId]/book' as any,
-      params: { serviceId: service.id },
+      params: { serviceId: service.id, fromCategoryId: categoryId },
     });
   };
 
@@ -136,66 +152,52 @@ export default function CategoryServicesScreen() {
 
     return (
       <View style={styles.serviceCard}>
-        <View style={styles.cardHeader}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initial}</Text>
-          </View>
-          <View style={styles.cardTitleCol}>
-            <Text style={styles.serviceTitle} numberOfLines={1}>
-              {item.name}
-            </Text>
-            <View style={styles.ratingRow}>
-              <Ionicons name="star" size={12} color="#FACC15" />
-              <Ionicons name="star" size={12} color="#FACC15" />
-              <Ionicons name="star" size={12} color="#FACC15" />
-              <Ionicons name="star" size={12} color="#FACC15" />
-              <Ionicons name="star-half" size={12} color="#FACC15" />
-              <Text style={styles.ratingText}>4.8</Text>
+        {/* Image / media placeholder */}
+        <View style={styles.serviceImage}>
+        <Ionicons
+            name="image"
+            size={36}
+            color={Colors.primary}
+            style={styles.serviceImageIcon}
+          />
+          <TouchableOpacity style={styles.favoriteBtn}>
+              <Ionicons name="heart-outline" size={20} color={Colors.error} />
+            </TouchableOpacity>
+        </View>
+
+        <View style={styles.serviceContent}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardTitleRow}>
+              <Text style={styles.serviceTitle} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <View style={styles.ratingPill}>
+                <Ionicons name="star" size={12} color="#F97316AA" />
+                <Text style={styles.ratingPillText}>4.8</Text>
+              </View>
             </View>
           </View>
-          <TouchableOpacity style={styles.favoriteBtn}>
-            <Ionicons name="heart-outline" size={20} color={Colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
 
-        {item.description ? (
-          <Text style={styles.serviceDesc} numberOfLines={2}>
-            {item.description}
-          </Text>
-        ) : null}
+          {item.description ? (
+            <Text style={styles.serviceDesc} numberOfLines={2}>
+              {item.description}
+            </Text>
+          ) : null}
 
-        <View style={styles.priceRow}>
-          <View>
-            <Text style={styles.priceText}>{priceStr ?? '—'}</Text>
-            <Text style={styles.priceUnit}>per session</Text>
-          </View>
-          <View style={styles.availabilityCol}>
-            <Text style={styles.availabilityLabel}>Available</Text>
-            <Text style={styles.availabilityValue}>Today</Text>
-          </View>
-        </View>
-
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={styles.seeDetailsBtn}
-            onPress={() => handleSeeDetails(item)}
-            activeOpacity={0.9}
-          >
-            <LinearGradient
-              colors={['#2563EB', '#7C3AED']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.seeDetailsGradient}
+          <View style={styles.priceRow}>
+            <View>
+                <Text style={styles.priceLabel}>Starting at</Text>
+                <Text style={styles.priceText}>{priceStr ?? '—'}</Text>
+            </View>
+            
+            <TouchableOpacity
+              style={styles.seeDetailsBtn}
+              onPress={() => handleSeeDetails(item)}
+              activeOpacity={0.9}
             >
-              <Text style={styles.seeDetailsText}>See Details</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.arrowBtn}
-            onPress={() => handleSeeDetails(item)}
-          >
-            <Ionicons name="arrow-forward" size={20} color="#FFF" />
-          </TouchableOpacity>
+                <Text style={styles.seeDetailsText}>View details</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     );
@@ -215,41 +217,55 @@ export default function CategoryServicesScreen() {
 
   const ListHeader = () => (
     <>
-      <View style={styles.header}>
-        <Text style={styles.categoryTitle}>{category?.name ?? 'Services'}</Text>
-        <Text style={styles.categoryDesc}>
-          Discover amazing services in this category
-        </Text>
-        <View style={styles.statsRow}>
-          <View style={styles.statItem}>
-            <Ionicons name="cube-outline" size={18} color={Colors.textSecondary} />
-            <Text style={styles.statText}>
-              {serviceCount} {serviceCount === 1 ? 'service' : 'services'} available
-            </Text>
+      {/* Featured Category hero */}
+      <View style={styles.heroCardWrapper}>
+        <LinearGradient
+          colors={['#4F46E5', '#7C3AED']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroCard}
+        >
+          <View style={styles.heroTagRow}>
+            <View style={styles.heroTagPill}>
+              <Text style={styles.heroTagText}>FEATURED CATEGORY</Text>
+            </View>
           </View>
-          <View style={styles.statItem}>
-            <Ionicons name="people-outline" size={18} color={Colors.textSecondary} />
-            <Text style={styles.statText}>
-              {vendorCount > 0 ? `${vendorCount}+ providers` : '— providers'}
+        </LinearGradient>
+        <View style={styles.heroTextBlock}>
+            <Text style={styles.heroTitle} numberOfLines={2}>
+              {category?.name ?? 'Category'}
             </Text>
+            {category?.description ? (
+              <Text style={styles.heroSubtitle} numberOfLines={3}>
+                {category.description}
+              </Text>
+            ) : (
+              <Text style={styles.heroSubtitle} numberOfLines={2}>
+                Discover holistic sessions and expert-led services in this category.
+              </Text>
+            )}
           </View>
-        </View>
+
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {}}
+            style={styles.heroLinkRow}
+          >
+            <Ionicons name="sparkles-outline" size={16} color={Colors.link} />
+            <Text style={styles.heroLinkText}>
+              {serviceCount} {serviceCount === 1 ? 'service' : 'services'} available in this category
+            </Text>
+          </TouchableOpacity>
       </View>
 
+      {/* Optional premium notice */}
       {hasAccess === false && (
         <View style={styles.upgradeCard}>
-          <Text style={styles.upgradeTitle}>Upgrade to Premium for Full Access</Text>
+          <Text style={styles.upgradeTitle}>Unlock all services in this category</Text>
           <Text style={styles.upgradeDesc}>
-            You currently have limited access to this category. Go premium to unlock premium benefits and book without restrictions.
+            Go premium to access every session and book without restrictions.
           </Text>
-          <View style={styles.servicesContinueRow}>
-            <Text style={styles.servicesContinueText}>Services continue below</Text>
-            <Ionicons name="information-circle-outline" size={18} color={Colors.primary} />
-          </View>
           <Text style={styles.upgradePrice}>{premiumPriceStr}</Text>
-          <TouchableOpacity style={styles.upgradeBtnSecondary} onPress={handleSeeWhyPremium}>
-            <Text style={styles.upgradeBtnSecondaryText}>See why premium</Text>
-          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.upgradeBtnPrimary, isPurchasing && styles.upgradeBtnDisabled]}
             onPress={handleUpgradeToPremium}
@@ -258,22 +274,24 @@ export default function CategoryServicesScreen() {
             {isPurchasing ? (
               <ActivityIndicator size="small" color="#FFF" />
             ) : (
-              <>
-                <Ionicons name="cart-outline" size={18} color="#FFF" />
-                <Text style={styles.upgradeBtnPrimaryText}>Upgrade to Premium</Text>
-              </>
+              <Text style={styles.upgradeBtnPrimaryText}>Upgrade to premium</Text>
             )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.upgradeBtnSecondary}
-            onPress={() => router.push('/(student)/browse-categories' as any)}
-          >
-            <Text style={styles.upgradeBtnSecondaryText}>Explore Other Categories</Text>
           </TouchableOpacity>
         </View>
       )}
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+      {/* Top Rated Services header */}
+      <View style={styles.servicesHeaderRow}>
+        <Text style={styles.servicesHeaderTitle}>Top rated services</Text>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => {}}>
+          <View style={styles.filtersRow}>
+            <Text style={styles.filtersText}>Filters</Text>
+            <Ionicons name="funnel-outline" size={16} color={Colors.textSecondary} />
+          </View>
+        </TouchableOpacity>
+      </View>
     </>
   );
 
@@ -327,112 +345,131 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
   },
-  header: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
+  heroCardWrapper: {
+    
   },
-  categoryTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: Colors.text,
+  heroCard: {
+    height: 150,
+    borderRadius: 24,
+    padding: 18,
   },
-  categoryDesc: {
+  heroTagRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    marginBottom: 8,
+  },
+  heroTagPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.18)',
+  },
+  heroTagText: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.semiBold,
+    letterSpacing: 0.6,
+    color: '#E5ECFF',
+  },
+  heroTextBlock: {
     marginTop: 4,
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 12,
-    gap: 16,
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  statText: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    fontWeight: '500',
-  },
-  upgradeCard: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    padding: 20,
-    borderRadius: 16,
-    backgroundColor: '#FEFCE8',
-    borderWidth: 1,
-    borderColor: '#FDE047',
-  },
-  upgradeTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.text,
-    marginBottom: 10,
-  },
-  upgradeDesc: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    lineHeight: 21,
     marginBottom: 12,
   },
-  servicesContinueRow: {
+  heroTitle: {
+    fontSize: 20,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.text,
+  },
+  heroSubtitle: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
+  },
+  heroLinkRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 14,
   },
-  servicesContinueText: {
+  heroLinkText: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.medium,
+    color: Colors.link,
+  },
+  upgradeCard: {
+    marginTop: 10,
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: Colors.primaryLight,
+    backgroundColor: Colors.primaryLight,
+  },
+  upgradeTitle: {
+    fontSize: 16,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.text,
+    marginBottom: 6,
+  },
+  upgradeDesc: {
     fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: 8,
   },
   upgradePrice: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#EA580C',
-    marginBottom: 14,
-  },
-  upgradeBtnSecondary: {
-    backgroundColor: '#FFF',
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  upgradeBtnSecondaryText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.textSecondary,
+    fontSize: 18,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.primary,
+    marginBottom: 10,
   },
   upgradeBtnPrimary: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#EA580C',
-    paddingVertical: 14,
-    borderRadius: 10,
-    marginBottom: 8,
+    backgroundColor: Colors.primary,
+    paddingVertical: 10,
+    borderRadius: 14,
   },
   upgradeBtnDisabled: {
     opacity: 0.7,
   },
   upgradeBtnPrimaryText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#FFF',
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: Colors.white,
+    top:-2,
   },
   errorText: {
     paddingHorizontal: 16,
     marginBottom: 8,
     fontSize: 13,
     color: Colors.error,
+    fontFamily: Typography.fontFamily.regular,
+  },
+  servicesHeaderRow: {
+    marginTop: 16,
+    paddingTop: 8,
+    paddingBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  servicesHeaderTitle: {
+    fontSize: 18,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.text,
+  },
+  filtersRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  filtersText: {
+    fontSize: 12,
+    top:-2,
+    fontFamily: Typography.fontFamily.medium,
+    color: Colors.textSecondary,
   },
   listContent: {
     padding: 16,
@@ -441,47 +478,57 @@ const styles = StyleSheet.create({
   resultsFooter: {
     fontSize: 13,
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
     textAlign: 'center',
     marginTop: 8,
   },
   serviceCard: {
     backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderRadius: 20,
+    marginBottom: 16,
+    overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.06,
-    shadowRadius: 8,
+    shadowRadius: 10,
     elevation: 2,
+  },
+  serviceImage: {
+    height: 140,
+    backgroundColor: Colors.backgroundSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  serviceImageIcon: {
+    color: Colors.primary,
+    backgroundColor: Colors.primaryLight,
+    borderRadius: 999,
+    padding: 12,
+  },
+  serviceImageText: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
+  },
+  serviceContent: {
+    padding: 14,
   },
   cardHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#7C3AED',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  avatarText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFF',
-  },
-  cardTitleCol: {
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     flex: 1,
-    marginLeft: 12,
   },
   serviceTitle: {
     fontSize: 17,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.extraBold,
     color: Colors.text,
+    marginBottom: 4,
   },
   ratingRow: {
     flexDirection: 'row',
@@ -492,75 +539,86 @@ const styles = StyleSheet.create({
   ratingText: {
     marginLeft: 6,
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.text,
   },
+  ratingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: '#FEF3C7AA',
+    gap: 4,
+  },
+  ratingPillText: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.extraBold,
+    color: '#EA580CAA',
+  },
   favoriteBtn: {
-    padding: 4,
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    paddingTop: 6,
+    paddingBottom: 4,
+    paddingHorizontal: 6,
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    shadowColor: Colors.textSecondary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   serviceDesc: {
-    marginTop: 10,
     fontSize: 14,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
     lineHeight: 20,
   },
+  priceValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   priceRow: {
+    marginTop: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginTop: 12,
+    gap: 100,
+  },
+  priceLabel: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.extraBold,
+    color: Colors.textLight,
+    textTransform: 'uppercase',
+    marginBottom: 2,
   },
   priceText: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#16A34A',
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.success,
   },
   priceUnit: {
     fontSize: 12,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
     marginTop: 2,
-  },
-  availabilityCol: {
-    alignItems: 'flex-end',
-  },
-  availabilityLabel: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-  },
-  availabilityValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#16A34A',
-    marginTop: 2,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 14,
-    gap: 8,
   },
   seeDetailsBtn: {
     flex: 1,
-    overflow: 'hidden',
-    borderRadius: 10,
-  },
-  seeDetailsGradient: {
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  seeDetailsText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#FFF',
-  },
-  arrowBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
+    borderRadius: 16,
     backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  seeDetailsText: {
+    fontSize: 15,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: Colors.white,
+    textAlign: 'center',
+    top: -2,
   },
   emptyState: {
     padding: 40,

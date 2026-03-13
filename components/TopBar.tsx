@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/Colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Typography } from '@/constants/typography';
 
 type TopBarProps = {
   navigation: any;
@@ -17,8 +18,10 @@ export function TopBar({ navigation, options }: TopBarProps) {
   const title = options.title ?? 'Ganimi';
 
   const openDrawer = () => {
-    if (navigation?.openDrawer) {
+    if (typeof navigation?.openDrawer === 'function') {
       navigation.openDrawer();
+    } else if (navigation?.navigate) {
+      navigation.navigate('menu');
     }
   };
 
@@ -40,10 +43,7 @@ export function TopBar({ navigation, options }: TopBarProps) {
         {/* Left: Hamburger opens drawer, Profile navigates to profile */}
         <View style={styles.leftIcons}>
           <TouchableOpacity onPress={openDrawer} style={styles.iconButton}>
-            <Ionicons name="menu" size={24} color={Colors.text} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={goToProfile} style={styles.iconButton}>
-            <Ionicons name="person-circle-outline" size={26} color={Colors.text} />
+            <Ionicons name="menu" size={20} color={Colors.drawerInactiveTintColor} />
           </TouchableOpacity>
         </View>
 
@@ -54,7 +54,7 @@ export function TopBar({ navigation, options }: TopBarProps) {
 
         {/* Right: Settings icon */}
         <TouchableOpacity onPress={goToSettings} style={styles.iconButton}>
-          <Ionicons name="settings-outline" size={22} color={Colors.text} />
+          <Ionicons name="settings" size={22} color={Colors.textSecondary} />
         </TouchableOpacity>
       </View>
     </View>
@@ -63,15 +63,18 @@ export function TopBar({ navigation, options }: TopBarProps) {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.background,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
+    marginTop: 10,
   },
   inner: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingBottom: 10,
+    backgroundColor: Colors.background,
+
   },
   leftIcons: {
     flexDirection: 'row',
@@ -79,14 +82,17 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   iconButton: {
-    padding: 4,
+    padding: 8,
+    borderRadius: 10,
+    backgroundColor: Colors.white,
   },
   title: {
     flex: 1,
     textAlign: 'center',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     color: Colors.text,
+    fontFamily: Typography.fontFamily.semiBold,
   },
 });
 

@@ -18,11 +18,13 @@ import {
   DrawerContentScrollView,
   DrawerItemList,
 } from '@react-navigation/drawer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function VendorDrawerContent(props: any) {
   const { user, vendorProfile, logout } = useAuth();
   const router = useRouter();
   const [menuVisible, setMenuVisible] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const handleLogout = async () => {
     setMenuVisible(false);
@@ -52,7 +54,7 @@ function VendorDrawerContent(props: any) {
       </DrawerContentScrollView>
 
       {/* Bottom user info */}
-      <View style={styles.userSection}>
+      <View style={[styles.userSection, { paddingBottom: 12 + (insets.bottom || 0) }]}>
         <View style={styles.userAvatar}>
           <Text style={styles.userAvatarText}>
             {user?.name?.charAt(0)?.toUpperCase() ?? 'U'}
@@ -82,7 +84,7 @@ function VendorDrawerContent(props: any) {
         onRequestClose={() => setMenuVisible(false)}
       >
         <Pressable
-          style={styles.menuOverlay}
+          style={[styles.menuOverlay, { paddingBottom: 24 + (insets.bottom || 0) }]}
           onPress={() => setMenuVisible(false)}
         >
           <Pressable style={styles.menuCard} onPress={(e) => e.stopPropagation()}>

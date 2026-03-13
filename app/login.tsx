@@ -10,14 +10,19 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Linking,
+  Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { Colors } from '@/constants/Colors';
 import { DEFAULT_TENANT_ID } from '@/constants/config';
+import { Typography } from '@/constants/typography';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { tokenStorage } from '@/services/tokenStorage';
+import { red } from 'react-native-reanimated/lib/typescript/Colors';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -79,7 +84,6 @@ export default function LoginScreen() {
       }
       
       Alert.alert('Success', 'All auth data and cache cleared. App will reload.');
-      console.log('[DEV] Auth data cleared, forcing reload...');
       
       // Force a hard reload by throwing an error
       setTimeout(() => {
@@ -92,28 +96,25 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.container}
       >
+        <View style={styles.scrollContent}>
         {/* Logo */}
         <View style={styles.logoContainer}>
-          
-          <Text style={styles.logoText}>
-            <Text style={styles.logoGanimi}>Ganimi</Text>
-          </Text>
-          <Text style={styles.tagline}>TIP for life !</Text>
+          <Image
+            source={require('@/assets/images/icon-wide.png')}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
         </View>
 
         <Text style={styles.subtitle}>Connect with expert service providers</Text>
 
         {/* Login Card */}
-        <View style={styles.card}>
-          <Text style={styles.title}>Welcome back</Text>
+          <Text style={styles.title}>Welcome Back</Text>
           <Text style={styles.description}>
             Enter your credentials to access your account
           </Text>
@@ -202,7 +203,7 @@ export default function LoginScreen() {
           </View>
 
           {/* DEV ONLY: Clear Auth Button */}
-          {__DEV__ && (
+          {/* {__DEV__ && (
             <TouchableOpacity
               style={styles.clearAuthButton}
               onPress={clearAuthData}
@@ -210,37 +211,69 @@ export default function LoginScreen() {
               <Ionicons name="trash-outline" size={16} color="#FF6B6B" />
               <Text style={styles.clearAuthText}>Clear Auth Data (Dev)</Text>
             </TouchableOpacity>
-          )}
-        </View>
+          )} */}
 
-        {/* Terms */}
-        <View style={styles.termsContainer}>
-          <Text style={styles.termsText}>
-            By signing in, you agree to our{' '}
-            <Text style={styles.termsLink}>Terms of Service</Text> and{' '}
-            <Text style={styles.termsLink}>Privacy Policy</Text>
-          </Text>
+          {/* Terms */}
+          <View style={styles.termsContainer}>
+            <Text style={styles.termsText}>
+              By signing in, you agree to our{' '}
+              <Text
+                style={styles.termsLink}
+                onPress={() =>
+                  Linking.openURL('https://ganimii.com/terms').catch(() => {
+                    Alert.alert('Unable to open link', 'Please try again later.');
+                  })
+                }
+              >
+                Terms of Service
+              </Text>{' '}
+              and{' '}
+              <Text
+                style={styles.termsLink}
+                onPress={() =>
+                  Linking.openURL('https://ganimii.com/privacy').catch(() => {
+                    Alert.alert('Unable to open link', 'Please try again later.');
+                  })
+                }
+              >
+                Privacy Policy
+              </Text>
+            </Text>
+          </View>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  container: {
+    flex: 1,
+    justifyContent: 'center',
   },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
+    marginTop: 8,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    borderRadius: 24,
+    backgroundColor: Colors.white,
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 8,
-    flexDirection: 'row',
     justifyContent: 'center',
+    left: -5,
+  },
+  logoImage: {
+    width: '100%',
+    maxWidth: 100,
+    height: 60,
   },
   logoCircle: {
     width: 32,
@@ -263,12 +296,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textSecondary,
     marginLeft: 4,
+    fontFamily: Typography.fontFamily.regular,
   },
   subtitle: {
     fontSize: 16,
     color: Colors.textSecondary,
     textAlign: 'center',
     marginBottom: 32,
+    fontFamily: Typography.fontFamily.regular,
   },
   card: {
     backgroundColor: '#FFF',
@@ -282,21 +317,24 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
     color: Colors.text,
-    marginBottom: 8,
+    marginBottom: 4,
+    alignSelf: 'center',
+    fontFamily: Typography.fontFamily.bold,
   },
   description: {
     fontSize: 14,
     color: Colors.textSecondary,
     marginBottom: 24,
+    alignSelf: 'center',
+    fontFamily: Typography.fontFamily.regular,
   },
   inputGroup: {
     marginBottom: 20,
   },
   label: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.text,
     marginBottom: 8,
   },
@@ -304,12 +342,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.inputBackground,
-    borderRadius: 8,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: Colors.border,
   },
   inputIcon: {
-    marginLeft: 12,
+    marginLeft: 20,
+    color: Colors.textSecondary,
   },
   input: {
     flex: 1,
@@ -317,6 +356,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     fontSize: 15,
     color: Colors.text,
+    fontFamily: Typography.fontFamily.regular,
   },
   passwordInput: {
     paddingRight: 48,
@@ -353,15 +393,16 @@ const styles = StyleSheet.create({
   rememberMeText: {
     fontSize: 14,
     color: Colors.text,
+    fontFamily: Typography.fontFamily.regular,
   },
   forgotPassword: {
     fontSize: 14,
     color: Colors.link,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.semiBold,
   },
   signInButton: {
     backgroundColor: Colors.primary,
-    borderRadius: 8,
+    borderRadius: 20,
     height: 48,
     justifyContent: 'center',
     alignItems: 'center',
@@ -373,7 +414,8 @@ const styles = StyleSheet.create({
   signInButtonText: {
     color: '#FFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
+    top: -2,
   },
   signUpContainer: {
     flexDirection: 'row',
@@ -383,11 +425,12 @@ const styles = StyleSheet.create({
   signUpText: {
     fontSize: 14,
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
   },
   signUpLink: {
     fontSize: 14,
     color: Colors.link,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
   },
   termsContainer: {
     marginTop: 24,
@@ -398,10 +441,11 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: 'center',
     lineHeight: 18,
+    fontFamily: Typography.fontFamily.regular,
   },
   termsLink: {
     color: Colors.link,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.medium,
   },
   clearAuthButton: {
     flexDirection: 'row',
@@ -418,6 +462,6 @@ const styles = StyleSheet.create({
   clearAuthText: {
     color: '#FF6B6B',
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
   },
 });
