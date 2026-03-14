@@ -83,8 +83,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
-    borderWidth: 4,
-    borderColor: 'red',
   },
   label: {
     fontSize: 11,

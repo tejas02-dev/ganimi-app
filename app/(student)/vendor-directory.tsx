@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/Colors';
+import { Typography } from '@/constants/typography';
 import { categoryService } from '@/services/category.service';
 import type { Category } from '@/types/category';
 import { directoryService, type DirectoryVendor } from '@/services/directory.service';
@@ -266,124 +267,53 @@ export default function StudentVendorDirectoryScreen() {
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.title}>Vendor Directory</Text>
-      <Text style={styles.subtitle}>
-        Search for vendors, services, and categories near you.
-      </Text>
-
-      {/* Filters card */}
-      <View style={styles.filtersCard}>
-        {/* Location search */}
-        <View style={styles.searchGroup}>
-          <Text style={styles.inputLabel}>Select Location</Text>
-          <View style={styles.searchInputRow}>
-            <Ionicons
-              name="location-outline"
-              size={18}
-              color={Colors.textSecondary}
-              style={styles.searchIcon}
-            />
-            <TextInput
-              style={styles.searchInput}
-              value={locationQuery}
-              onChangeText={handleLocationInputChange}
-              placeholder="Type a city or area"
-              placeholderTextColor={Colors.placeholder}
-            />
-            {isLoadingLocations && <ActivityIndicator size="small" color={Colors.primary} />}
-          </View>
-          {locationResults.length > 0 && (
-            <View style={styles.dropdown}>
-              {locationResults.map((item) => (
-                <TouchableOpacity
-                  key={item.placeId}
-                  style={styles.dropdownItem}
-                  onPress={() => handleSelectLocation(item)}
-                >
-                  <Text style={styles.dropdownItemText}>{item.description}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
+      {/* Location search bar */}
+      <View style={styles.locationBar}>
+        <Ionicons name="location-outline" size={20} color={Colors.textSecondary} style={styles.locationIcon} />
+        <TextInput
+          style={styles.locationInput}
+          value={locationQuery}
+          onChangeText={handleLocationInputChange}
+          onBlur={() => setTimeout(() => setLocationResults([]), 200)}
+          placeholder="Select Location..."
+          placeholderTextColor={Colors.placeholder}
+        />
+        {isLoadingLocations && <ActivityIndicator size="small" color={Colors.primary} />}
+      </View>
+      {locationResults.length > 0 && (
+        <View style={styles.dropdown}>
+          {locationResults.map((item) => (
+            <TouchableOpacity key={item.placeId} style={styles.dropdownItem} onPress={() => handleSelectLocation(item)}>
+              <Text style={styles.dropdownItemText}>{item.description}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
+      )}
 
-        {/* Vendor search */}
-        <View style={styles.searchGroup}>
-          <Text style={styles.inputLabel}>Search Vendors or Services</Text>
-          <View style={styles.searchInputRow}>
-            <Ionicons
-              name="search-outline"
-              size={18}
-              color={Colors.textSecondary}
-              style={styles.searchIcon}
-            />
-            <TextInput
-              style={styles.searchInput}
-              value={vendorSearch}
-              onChangeText={setVendorSearch}
-              placeholder="Search by vendor or service name"
-              placeholderTextColor={Colors.placeholder}
-            />
-          </View>
-        </View>
-
-        {/* Category filter pills */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoryRow}
+      {/* Category filter pills */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
+        <TouchableOpacity
+          style={[styles.categoryChip, selectedCategoryId === 'all' && styles.categoryChipActive]}
+          onPress={() => setSelectedCategoryId('all')}
         >
-          <TouchableOpacity
-            style={[
-              styles.categoryChip,
-              selectedCategoryId === 'all' && styles.categoryChipActive,
-            ]}
-            onPress={() => setSelectedCategoryId('all')}
-          >
-            <Ionicons
-              name="apps-outline"
-              size={16}
-              color={selectedCategoryId === 'all' ? '#FFF' : Colors.textSecondary}
-            />
-            <Text
-              style={[
-                styles.categoryChipText,
-                selectedCategoryId === 'all' && styles.categoryChipTextActive,
-              ]}
+          <Text style={[styles.categoryChipText, selectedCategoryId === 'all' && styles.categoryChipTextActive]}>All</Text>
+        </TouchableOpacity>
+        {categories.map((c) => {
+          const active = selectedCategoryId === c.id;
+          return (
+            <TouchableOpacity
+              key={c.id}
+              style={[styles.categoryChip, active && styles.categoryChipActive]}
+              onPress={() => setSelectedCategoryId(c.id)}
             >
-              All
-            </Text>
-          </TouchableOpacity>
-          {categories.map((c) => {
-            const active = selectedCategoryId === c.id;
-            return (
-              <TouchableOpacity
-                key={c.id}
-                style={[styles.categoryChip, active && styles.categoryChipActive]}
-                onPress={() => setSelectedCategoryId(c.id)}
-              >
-                <Text
-                  style={[
-                    styles.categoryChipText,
-                    active && styles.categoryChipTextActive,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {c.name}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
+              <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]} numberOfLines={1}>
+                {c.name}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
 
-      {/* Vendors list */}
-      <View style={styles.listHeaderRow}>
-        <Text style={styles.listHeaderText}>Vendors</Text>
-        <Text style={styles.listHeaderMeta}>
-          Page {page} of {totalPages} ({total} total)
-        </Text>
-      </View>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
       {isLoadingVendors ? (
@@ -393,12 +323,16 @@ export default function StudentVendorDirectoryScreen() {
       ) : filteredVendors.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>No vendors found</Text>
-          <Text style={styles.emptySubtitle}>
-            Try adjusting your search or filters.
-          </Text>
+          <Text style={styles.emptySubtitle}>Try adjusting your location or category filters.</Text>
         </View>
       ) : (
-        <View style={styles.vendorList}>
+        <>
+          <View style={styles.countRow}>
+            <Text style={styles.countText}>
+              Showing {(page - 1) * limit + 1}-{(page - 1) * limit + filteredVendors.length} of {total}
+            </Text>
+          </View>
+          <View style={styles.vendorList}>
           {filteredVendors.map((v) => {
             const phone =
               (v.phoneNumber as string) ||
@@ -407,375 +341,291 @@ export default function StudentVendorDirectoryScreen() {
               (v.phone as string) ||
               '';
             const addressParts = [
+              (v as any).address,
               v.branchAddress || v.branchName,
               v.city,
               v.state,
               v.branchPincode,
               v.country,
             ].filter(Boolean);
-            const address = addressParts.join(', ');
+            const address = addressParts.join(', ') || null;
+            const categoryLabel = v.categoryName || 'Vendor';
 
             const handleCallVendor = () => {
               if (!phone) {
                 Alert.alert('Contact unavailable', 'No phone number available for this vendor.');
                 return;
               }
-              const tel = `tel:${phone.replace(/\\s+/g, '')}`;
-              Linking.openURL(tel).catch(() => {
+              Linking.openURL(`tel:${phone.replace(/\s+/g, '')}`).catch(() => {
                 Alert.alert('Unable to place call', 'Please try again or check your device settings.');
               });
             };
 
-            const handleViewDetails = () => {
-              Alert.alert(
-                'Coming soon',
-                'Vendor detail view will be available in a future update.',
-              );
+            const handleViewProfile = () => {
+              Alert.alert('Coming soon', 'Vendor profile view will be available in a future update.');
             };
 
             return (
               <View key={v.id} style={styles.vendorCard}>
-                <View style={styles.vendorAvatar}>
-                  <Text style={styles.vendorAvatarText}>
-                    {v.name?.charAt(0)?.toUpperCase() ?? 'V'}
-                  </Text>
+                <View style={styles.vendorCardImageWrap}>
+                  <View style={styles.vendorCardImagePlaceholder}>
+                    <Ionicons name="business-outline" size={40} color={Colors.primary} />
+                  </View>
+                  <View style={styles.vendorCategoryTag}>
+                    <Text style={styles.vendorCategoryTagText}>{categoryLabel}</Text>
+                  </View>
                 </View>
-                <View style={styles.vendorInfo}>
-                  <Text style={styles.vendorName} numberOfLines={1}>
-                    {v.name}
-                  </Text>
-                  {v.categoryName ? (
-                    <Text style={styles.vendorMeta} numberOfLines={1}>
-                      {v.categoryName}
-                    </Text>
-                  ) : null}
-                  {address ? (
-                    <Text style={styles.vendorMeta} numberOfLines={2}>
-                      {address}
-                    </Text>
-                  ) : null}
-                  {phone ? (
-                    <Text style={styles.vendorMeta} numberOfLines={1}>
-                      Phone: {phone}
-                    </Text>
-                  ) : null}
+                <View style={styles.vendorCardBody}>
+                  <View style={styles.vendorNameRow}>
+                    <Text style={styles.vendorName} numberOfLines={1}>{v.name}</Text>
+                    {(v as any).rating != null && (
+                      <View style={styles.ratingRow}>
+                        <Ionicons name="star" size={14} color={Colors.warning} />
+                        <Text style={styles.ratingText}>{(v as any).rating}</Text>
+                      </View>
+                    )}
+                  </View>
                   {v.description ? (
-                    <Text style={styles.vendorDescription} numberOfLines={2}>
-                      {v.description}
-                    </Text>
+                    <Text style={styles.vendorDescription} numberOfLines={2}>{v.description}</Text>
                   ) : null}
-                  {typeof v.serviceCount === 'number' && (
-                    <Text style={styles.vendorMeta}>
-                      {v.serviceCount} {v.serviceCount === 1 ? 'service' : 'services'}
-                    </Text>
-                  )}
-
+                  <View style={styles.vendorMetaRow}>
+                    <Ionicons name="location-outline" size={14} color={Colors.textSecondary} />
+                    <Text style={styles.vendorMetaText} numberOfLines={2}>{address || '—'}</Text>
+                  </View>
+                  {phone ? (
+                    <View style={styles.vendorMetaRow}>
+                      <Ionicons name="call-outline" size={14} color={Colors.textSecondary} />
+                      <Text style={styles.vendorMetaText}>{phone}</Text>
+                    </View>
+                  ) : null}
                   <View style={styles.vendorActionsRow}>
                     <TouchableOpacity
-                      style={[styles.vendorActionButton, !phone && styles.vendorActionButtonDisabled]}
+                      style={[styles.vendorBtnCall, !phone && styles.vendorBtnCallDisabled]}
                       onPress={handleCallVendor}
                       disabled={!phone}
                     >
-                      <Ionicons
-                        name="call-outline"
-                        size={16}
-                        color={phone ? '#FFF' : '#9CA3AF'}
-                      />
-                      <Text style={styles.vendorActionButtonText}>Call</Text>
+                      <Ionicons name="call" size={18} color={phone ? '#FFF' : Colors.textSecondary} />
+                      <Text style={styles.vendorBtnCallText}>Call</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.vendorActionButton, styles.vendorActionSecondary]}
-                      onPress={handleViewDetails}
-                    >
-                      <Text style={[styles.vendorActionButtonText, styles.vendorActionSecondaryText]}>
-                        View Details
-                      </Text>
+                    <TouchableOpacity style={styles.vendorBtnProfile} onPress={handleViewProfile}>
+                      <Text style={styles.vendorBtnProfileText}>View Profile</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
               </View>
             );
           })}
-        </View>
+          </View>
+        </>
       )}
 
-      {/* Pagination controls */}
-      <View style={styles.paginationRow}>
-        <TouchableOpacity
-          style={[styles.pageButton, !canGoPrev && styles.pageButtonDisabled]}
-          disabled={!canGoPrev}
-          onPress={() => canGoPrev && setPage((p) => Math.max(1, p - 1))}
-        >
-          <Ionicons
-            name="chevron-back"
-            size={18}
-            color={canGoPrev ? Colors.text : Colors.textSecondary}
-          />
-          <Text
-            style={[
-              styles.pageButtonText,
-              !canGoPrev && styles.pageButtonTextDisabled,
-            ]}
+      {/* Pagination */}
+      {(totalPages > 1 || canGoPrev || canGoNext) && (
+        <View style={styles.paginationRow}>
+          <TouchableOpacity
+            style={[styles.pageButton, !canGoPrev && styles.pageButtonDisabled]}
+            disabled={!canGoPrev}
+            onPress={() => canGoPrev && setPage((p) => Math.max(1, p - 1))}
           >
-            Previous
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.pageButton,
-            styles.pageButtonPrimary,
-            !canGoNext && styles.pageButtonDisabled,
-          ]}
-          disabled={!canGoNext}
-          onPress={() => canGoNext && setPage((p) => p + 1)}
-        >
-          <Text
-            style={[
-              styles.pageButtonText,
-              styles.pageButtonPrimaryText,
-              !canGoNext && styles.pageButtonTextDisabled,
-            ]}
+            <Ionicons name="chevron-back" size={18} color={canGoPrev ? Colors.text : Colors.textSecondary} />
+            <Text style={[styles.pageButtonText, !canGoPrev && styles.pageButtonTextDisabled]}>Previous</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.pageButton, styles.pageButtonPrimary, !canGoNext && styles.pageButtonDisabled]}
+            disabled={!canGoNext}
+            onPress={() => canGoNext && setPage((p) => p + 1)}
           >
-            Next
-          </Text>
-          <Ionicons
-            name="chevron-forward"
-            size={18}
-            color={canGoNext ? '#FFF' : Colors.textSecondary}
-          />
-        </TouchableOpacity>
-      </View>
+            <Text style={[styles.pageButtonText, styles.pageButtonPrimaryText, !canGoNext && styles.pageButtonTextDisabled]}>Next</Text>
+            <Ionicons name="chevron-forward" size={18} color={canGoNext ? '#FFF' : Colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.backgroundSecondary,
-  },
-  content: {
-    paddingHorizontal: 16,
-    paddingTop: 24,
-    paddingBottom: 40,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: Colors.text,
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    marginBottom: 20,
-  },
-  filtersCard: {
-    borderRadius: 16,
-    backgroundColor: '#EEF2FF',
+  container: { flex: 1, backgroundColor: Colors.background },
+  content: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 40 },
+
+  locationBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.inputBackground,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E0E7FF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  searchGroup: {
-    marginBottom: 16,
-  },
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.text,
-    marginBottom: 6,
-  },
-  searchInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 999,
-    backgroundColor: '#FFF',
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: Colors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
   },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
+  locationIcon: { marginRight: 10 },
+  locationInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.text,
+    padding: 0,
   },
   dropdown: {
-    marginTop: 6,
-    borderRadius: 12,
-    backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.6)',
-    overflow: 'hidden',
-  },
-  dropdownItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  dropdownItemText: {
-    fontSize: 14,
-    color: Colors.text,
-  },
-  categoryRow: {
-    paddingVertical: 4,
-    paddingRight: 4,
     marginBottom: 16,
-  },
-  categoryChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
+    borderRadius: 12,
+    backgroundColor: Colors.white,
     borderWidth: 1,
     borderColor: Colors.border,
-    backgroundColor: '#FFF',
-    marginRight: 8,
+    overflow: 'hidden',
+  },
+  dropdownItem: { paddingHorizontal: 14, paddingVertical: 12 },
+  dropdownItemText: { fontSize: 14, fontFamily: Typography.fontFamily.regular, color: Colors.text },
+
+  categoryRow: { paddingVertical: 4, paddingRight: 4, marginBottom: 20 },
+  categoryChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#E5E7EB',
+    marginRight: 10,
   },
   categoryChipActive: {
     backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
   },
   categoryChipText: {
-    fontSize: 13,
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.textSecondary,
   },
   categoryChipTextActive: {
-    color: '#FFF',
-    fontWeight: '600',
+    color: Colors.white,
   },
-  listHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  listHeaderText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.text,
-  },
-  listHeaderMeta: {
-    fontSize: 12,
+
+  errorText: { marginBottom: 12, fontSize: 13, fontFamily: Typography.fontFamily.regular, color: Colors.error },
+  centerRow: { paddingVertical: 32, alignItems: 'center' },
+
+  countRow: { marginBottom: 12 },
+  countText: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
   },
-  errorText: {
-    marginBottom: 8,
-    fontSize: 13,
-    color: Colors.error,
-  },
-  centerRow: {
-    paddingVertical: 24,
-    alignItems: 'center',
-  },
-  vendorList: {
-    marginTop: 4,
-    marginBottom: 12,
-  },
+
+  vendorList: { marginBottom: 16 },
   vendorCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    padding: 14,
-    marginBottom: 12,
+    backgroundColor: Colors.white,
     borderRadius: 16,
-    backgroundColor: '#FFF',
+    marginBottom: 16,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 2,
   },
-  vendorAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  vendorAvatarText: {
-    color: '#FFF',
-    fontWeight: '700',
-  },
-  vendorInfo: {
+  vendorCardImageWrap: { position: 'relative', height: 140 },
+  vendorCardImagePlaceholder: {
     flex: 1,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vendorCategoryTag: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    backgroundColor: Colors.primaryLight,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  vendorCategoryTagText: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: Colors.primary,
+  },
+  vendorCardBody: { padding: 14 },
+  vendorNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+    gap: 8,
   },
   vendorName: {
-    fontSize: 15,
-    fontWeight: '600',
+    flex: 1,
+    fontSize: 17,
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
   },
-  vendorMeta: {
-    fontSize: 13,
-    color: Colors.textSecondary,
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  ratingText: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: Colors.secondary,
   },
   vendorDescription: {
     fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
-    marginTop: 2,
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  vendorMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  vendorMetaText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
   },
   vendorActionsRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 10,
+    gap: 10,
+    marginTop: 14,
   },
-  vendorActionButton: {
+  vendorBtnCall: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 0,
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingVertical: 12,
+    borderRadius: 12,
     backgroundColor: Colors.primary,
-    gap: 6,
+    gap: 8,
   },
-  vendorActionButtonDisabled: {
-    backgroundColor: '#E5E7EB',
+  vendorBtnCallDisabled: {
+    backgroundColor: Colors.border,
   },
-  vendorActionButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#FFF',
-  },
-  vendorActionSecondary: {
-    backgroundColor: '#F3F4F6',
-  },
-  vendorActionSecondaryText: {
-    color: Colors.text,
-  },
-  emptyState: {
-    paddingVertical: 32,
-    alignItems: 'center',
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.text,
-  },
-  emptySubtitle: {
-    marginTop: 4,
+  vendorBtnCallText: {
     fontSize: 14,
-    color: Colors.textSecondary,
-    textAlign: 'center',
+    fontFamily: Typography.fontFamily.semiBold,
+    color: Colors.white,
   },
+  vendorBtnProfile: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: Colors.primaryLight,
+  },
+  vendorBtnProfileText: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: Colors.primary,
+  },
+
+  emptyState: { paddingVertical: 40, alignItems: 'center' },
+  emptyTitle: { fontSize: 16, fontFamily: Typography.fontFamily.semiBold, color: Colors.text },
+  emptySubtitle: { marginTop: 6, fontSize: 14, fontFamily: Typography.fontFamily.regular, color: Colors.textSecondary, textAlign: 'center' },
+
   paginationRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 8,
     gap: 12,
   },
   pageButton: {
@@ -783,28 +633,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 18,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 12,
     backgroundColor: '#F3F4F6',
     gap: 6,
     minWidth: 110,
     justifyContent: 'center',
   },
-  pageButtonDisabled: {
-    opacity: 0.6,
-  },
+  pageButtonDisabled: { opacity: 0.6 },
   pageButtonText: {
     fontSize: 13,
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.text,
-    fontWeight: '500',
   },
-  pageButtonTextDisabled: {
-    color: Colors.textSecondary,
-  },
-  pageButtonPrimary: {
-    backgroundColor: Colors.primary,
-  },
-  pageButtonPrimaryText: {
-    color: '#FFF',
-  },
+  pageButtonTextDisabled: { color: Colors.textSecondary },
+  pageButtonPrimary: { backgroundColor: Colors.primary },
+  pageButtonPrimaryText: { color: Colors.white },
 });
 

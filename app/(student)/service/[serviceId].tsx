@@ -52,7 +52,7 @@ export default function StudentServiceExploreScreen() {
   useFocusEffect(
     useCallback(() => {
       const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-        router.navigate('/(student)/my-services' as any);
+        router.replace('/(student)/my-services' as any);
         return true;
       });
       return () => sub.remove();
@@ -248,7 +248,7 @@ export default function StudentServiceExploreScreen() {
           onPress={() =>
             router.push({
               pathname: '/(student)/course/[courseId]' as any,
-              params: { courseId: item.id },
+              params: { courseId: item.id, serviceId: serviceId ?? '', batchId: batchId ?? '' },
             })
           }
         >

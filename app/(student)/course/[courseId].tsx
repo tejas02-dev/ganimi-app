@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,21 +7,36 @@ import {
   ScrollView,
   TouchableOpacity,
   Linking,
+  BackHandler,
 } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Colors } from '@/constants/Colors';
+import { Typography } from '@/constants/typography';
 import {
   courseService,
   type CoursePlayerData,
   type CourseLesson,
   type CourseTopic,
   type CourseTopicContentMap,
+  type CourseContent,
 } from '@/services/course.service';
 import { Ionicons } from '@expo/vector-icons';
 import YoutubePlayer from 'react-native-youtube-iframe';
 
+function getTopicSubtitle(content: CourseContent | undefined): string {
+  if (!content) return '—';
+  const type = (content.contentType || '').toLowerCase();
+  if (type === 'video') return `Video${(content as any).duration ? ` • ${(content as any).duration}` : ''}`;
+  if (type === 'article') return `Reading${(content as any).durationMinutes ? ` • ${(content as any).durationMinutes} mins` : ''}`;
+  if (type === 'quiz') return `Quiz${(content as any).questionCount ? ` • ${(content as any).questionCount} questions` : ''}`;
+  return content.contentType || '—';
+}
+
 type Params = {
   courseId: string;
+  serviceId?: string;
+  batchId?: string;
 };
 
 export const options = {
@@ -47,7 +62,8 @@ const extractYouTubeId = (url?: string | null): string | null => {
 };
 
 export default function StudentCoursePlayerScreen() {
-  const { courseId } = useLocalSearchParams<Params>();
+  const { courseId, serviceId, batchId } = useLocalSearchParams<Params>();
+  const router = useRouter();
 
   const [course, setCourse] = useState<CoursePlayerData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -57,6 +73,26 @@ export default function StudentCoursePlayerScreen() {
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [selectedContentMapId, setSelectedContentMapId] = useState<string | null>(null);
+
+  // Keep last selected video ID so the YouTube player can stay mounted when switching to article (avoids blue screen on switch back)
+  const [lastVideoId, setLastVideoId] = useState<string | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (serviceId) {
+          router.replace({
+            pathname: '/(student)/service/[serviceId]' as any,
+            params: { serviceId, ...(batchId ? { batchId } : {}) },
+          });
+        } else {
+          router.back();
+        }
+        return true;
+      });
+      return () => sub.remove();
+    }, [router, serviceId, batchId])
+  );
 
   useEffect(() => {
     if (!courseId) return;
@@ -102,6 +138,14 @@ export default function StudentCoursePlayerScreen() {
     return { lesson, topic, contentMap };
   }, [course, selectedLessonId, selectedTopicId, selectedContentMapId]);
 
+  useEffect(() => {
+    const content = selectedNodes.contentMap?.content;
+    if (content?.contentType === 'video' && content.videoUrl) {
+      const id = extractYouTubeId(content.videoUrl);
+      if (id) setLastVideoId(id);
+    }
+  }, [selectedNodes.contentMap?.content?.id, selectedNodes.contentMap?.content?.contentType, selectedNodes.contentMap?.content?.videoUrl]);
+
   const handleOpenVideo = () => {
     const content = selectedNodes.contentMap?.content;
     if (!content?.videoUrl) return;
@@ -120,167 +164,132 @@ export default function StudentCoursePlayerScreen() {
     setSelectedContentMapId(contentMap?.id ?? topic.contents?.[0]?.id ?? null);
   };
 
+  const totalTopics = useMemo(
+    () => course?.lessons?.reduce((acc, l) => acc + (l.topics?.length ?? 0), 0) ?? 0,
+    [course],
+  );
+
   const renderPlayerArea = () => {
     const content = selectedNodes.contentMap?.content;
+    const isVideo = content?.contentType === 'video';
+    const videoId = content?.videoUrl ? extractYouTubeId(content.videoUrl) : null;
 
-    if (!content) {
-      return (
-        <View style={styles.playerEmpty}>
-          <Ionicons name="play-circle-outline" size={40} color={Colors.textSecondary} />
-          <Text style={styles.playerEmptyTitle}>Select a lesson to start learning</Text>
-          <Text style={styles.playerEmptySubtitle}>
-            Choose a topic from the list below to see its content here.
-          </Text>
-        </View>
-      );
-    }
-
-    const isVideo = content.contentType === 'video';
-
-    // Video content: show inline YouTube player when possible
-    if (isVideo && content.videoUrl) {
-      const videoId = extractYouTubeId(content.videoUrl);
-
-      if (videoId) {
-        return (
-          <View style={styles.playerCard}>
-            <View style={styles.playerMedia}>
+    return (
+      <View>
+        {/* Video block: keep mounted when we have a video id, hide when showing article so player doesn't remount on switch back */}
+        {(lastVideoId || (isVideo && videoId)) ? (
+          <View
+            style={[
+              styles.videoWrap,
+              !isVideo && styles.videoWrapHidden,
+            ]}
+            pointerEvents={isVideo ? 'auto' : 'none'}
+          >
+            <View style={styles.videoContainer}>
               <YoutubePlayer
-                height={210}
+                key={lastVideoId || videoId || ''}
+                height={200}
                 play={false}
-                videoId={videoId}
+                videoId={lastVideoId || videoId || ''}
               />
             </View>
-
-            <View style={styles.playerMeta}>
-              <Text style={styles.playerContentTitle} numberOfLines={2}>
-                {content.title}
-              </Text>
-
-              {content.description ? (
-                <Text style={styles.playerDescription}>{content.description}</Text>
-              ) : null}
-            </View>
           </View>
-        );
-      }
+        ) : null}
 
-      // Fallback: if we can't extract a YouTube ID, open externally
-      return (
-        <View style={styles.playerCard}>
-          <TouchableOpacity
-            activeOpacity={0.9}
-            style={styles.playerMedia}
-            onPress={handleOpenVideo}
-          >
-            <View style={styles.playerOverlay}>
-              <Ionicons name="play-circle" size={56} color="#FFFFFF" />
+        {!content && (
+          <View style={styles.videoWrap}>
+            <View style={styles.videoPlaceholder}>
+              <Ionicons name="play-circle" size={64} color="rgba(255,255,255,0.9)" />
             </View>
-          </TouchableOpacity>
+            <Text style={styles.playerEmptyHint}>Select a topic below to start</Text>
+          </View>
+        )}
 
-          <View style={styles.playerMeta}>
-            <Text style={styles.playerContentTitle} numberOfLines={2}>
-              {content.title}
-            </Text>
-
+        {content && !isVideo && (
+          <View style={styles.articleWrap}>
+            <Text style={styles.articleTitle} numberOfLines={2}>{content.title}</Text>
             {content.description ? (
-              <Text style={styles.playerDescription}>{content.description}</Text>
+              <Text style={styles.articleDescription}>{content.description}</Text>
             ) : null}
+            {content.articleText ? (
+              <Text style={styles.articleBody}>{content.articleText}</Text>
+            ) : (
+              <Text style={styles.articlePlaceholder}>No content available.</Text>
+            )}
+          </View>
+        )}
 
-            <TouchableOpacity
-              style={styles.primaryButton}
-              activeOpacity={0.9}
-              onPress={handleOpenVideo}
-            >
-              <Ionicons name="open-outline" size={18} color="#FFF" />
-              <Text style={styles.primaryButtonText}>Open in YouTube</Text>
+        {content && isVideo && !videoId && (
+          <View style={styles.videoWrap}>
+            <TouchableOpacity activeOpacity={0.9} style={styles.videoPlaceholder} onPress={handleOpenVideo}>
+              <Ionicons name="play-circle" size={64} color="rgba(255,255,255,0.9)" />
             </TouchableOpacity>
           </View>
-        </View>
-      );
-    }
-
-    // Text / article content: compact card without big icon area
-    return (
-      <View style={styles.playerCard}>
-        <View style={styles.playerMeta}>
-          <Text style={styles.playerContentTitle} numberOfLines={2}>
-            {content.title}
-          </Text>
-
-          {content.description ? (
-            <Text style={styles.playerDescription}>{content.description}</Text>
-          ) : null}
-
-          {content.articleText ? (
-            <Text style={styles.articleText}>{content.articleText}</Text>
-          ) : null}
-        </View>
+        )}
       </View>
     );
   };
 
   const renderLessonSection = (lesson: CourseLesson) => {
     const isExpanded = expandedLessonId === lesson.id;
-    const isActiveLesson = selectedLessonId === lesson.id;
+    const topicCount = lesson.topics?.length ?? 0;
 
     return (
       <View key={lesson.id} style={styles.lessonSection}>
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={() => onPressLesson(lesson)}
-          style={[
-            styles.lessonHeader,
-            isActiveLesson && styles.lessonHeaderActive,
-          ]}
+          style={styles.lessonHeader}
         >
-          <View style={{ flex: 1 }}>
-            <Text style={styles.lessonTitle} numberOfLines={1}>
-              {lesson.sequence}. {lesson.title}
-            </Text>
-            <Text style={styles.lessonSubtitle}>
-              {lesson.topics.length} {lesson.topics.length === 1 ? 'topic' : 'topics'}
-            </Text>
-          </View>
           <Ionicons
-            name={isExpanded ? 'chevron-up' : 'chevron-down'}
-            size={18}
+            name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+            size={20}
             color={Colors.textSecondary}
+            style={styles.lessonChevron}
           />
+          <Text style={styles.lessonTitle} numberOfLines={1}>
+            Lesson {lesson.sequence}. {lesson.title}
+          </Text>
+          <Text style={styles.lessonTopicCount}>{topicCount} Topics</Text>
         </TouchableOpacity>
 
-        {isExpanded ? (
+        {isExpanded && lesson.topics?.length ? (
           <View style={styles.topicList}>
             {lesson.topics.map((topic) => {
               const firstContent = topic.contents?.[0];
-              const isSelected =
-                selectedLessonId === lesson.id && selectedTopicId === topic.id;
-              const isVideo = firstContent?.content?.contentType === 'video';
+              const content = firstContent?.content;
+              const isSelected = selectedLessonId === lesson.id && selectedTopicId === topic.id;
+              const isCompleted = (topic as any).isCompleted ?? isSelected;
+              const isLocked = (topic as any).isLocked ?? false;
+              const contentType = (content?.contentType || '').toLowerCase();
+              const isVideo = contentType === 'video';
+              const isQuiz = contentType === 'quiz';
 
               return (
                 <TouchableOpacity
                   key={topic.id}
                   activeOpacity={0.85}
                   onPress={() => onPressTopic(lesson, topic, firstContent)}
-                  style={[styles.topicRow, isSelected && styles.topicRowActive]}
+                  style={[styles.topicRow, isCompleted && styles.topicRowCompleted]}
                 >
-                  <Ionicons
-                    name={isVideo ? 'play-circle-outline' : 'document-text-outline'}
-                    size={18}
-                    color={isSelected ? Colors.primary : Colors.textSecondary}
-                    style={{ marginRight: 8 }}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={[
-                        styles.topicTitle,
-                        isSelected && styles.topicTitleActive,
-                      ]}
-                      numberOfLines={1}
-                    >
+                  <View style={[styles.topicIconWrap, isCompleted && styles.topicIconWrapActive]}>
+                    <Ionicons
+                      name={isVideo ? 'play' : isQuiz ? 'help-circle' : 'document-text'}
+                      size={18}
+                      color={isCompleted ? '#FFF' : Colors.textSecondary}
+                    />
+                  </View>
+                  <View style={styles.topicContent}>
+                    <Text style={styles.topicTitle} numberOfLines={1}>
                       {topic.sequence}. {topic.title}
                     </Text>
+                    <Text style={styles.topicSubtitle}>{getTopicSubtitle(content)}</Text>
                   </View>
+                  {isCompleted ? (
+                    <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />
+                  ) : isLocked ? (
+                    <Ionicons name="lock-closed" size={20} color={Colors.textLight} />
+                  ) : null}
                 </TouchableOpacity>
               );
             })}
@@ -315,17 +324,10 @@ export default function StudentCoursePlayerScreen() {
     );
   }
 
+  const lessonCount = course.lessons?.length ?? 0;
+
   return (
     <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <Text style={styles.title} numberOfLines={2}>
-          {course.title}
-        </Text>
-        <Text style={styles.subtitle}>
-          Learn at your own pace with structured lessons and topics.
-        </Text>
-      </View>
-
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
@@ -333,14 +335,27 @@ export default function StudentCoursePlayerScreen() {
       >
         {renderPlayerArea()}
 
-        <View style={styles.playlistCard}>
-          <View style={styles.playlistHeader}>
-            <Text style={styles.playlistTitle}>Course Content</Text>
-            <Text style={styles.playlistSubtitle}>
-              {course.lessons.length} {course.lessons.length === 1 ? 'lesson' : 'lessons'}
+        <Text style={styles.courseTitle} numberOfLines={2}>{course.title}</Text>
+        <Text style={styles.courseDescription}>
+          {(course as any).description || 'Learn at your own pace with structured lessons and topics.'}
+        </Text>
+
+        <View style={styles.progressCard}>
+          <Text style={styles.progressLabel}>PROGRESS</Text>
+          <View style={styles.progressCardRow}>
+            <View style={styles.progressIconWrap}>
+              <Ionicons name="book" size={24} color={Colors.primary} />
+            </View>
+            <Text style={styles.progressStats}>
+              {lessonCount} {lessonCount === 1 ? 'Lesson' : 'Lessons'}
+              {' • '}
+              {totalTopics} Topics
             </Text>
           </View>
+        </View>
 
+        <Text style={styles.sectionTitle}>Course Content</Text>
+        <View style={styles.contentCard}>
           {course.lessons.map((lesson) => renderLessonSection(lesson))}
         </View>
       </ScrollView>
@@ -349,191 +364,185 @@ export default function StudentCoursePlayerScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  headerRow: {
-    paddingHorizontal: 16,
-    paddingTop: 24,
-    paddingBottom: 8,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-  },
+  container: { flex: 1, backgroundColor: Colors.background },
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 32 },
+
   centerContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 16,
   },
-  loadingText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: Colors.textSecondary,
+  loadingText: { marginTop: 8, fontSize: 14, fontFamily: Typography.fontFamily.regular, color: Colors.textSecondary },
+  errorText: { fontSize: 14, fontFamily: Typography.fontFamily.regular, color: Colors.error, textAlign: 'center' },
+
+  videoWrap: { marginBottom: 16, borderRadius: 16, overflow: 'hidden', backgroundColor: '#111827' },
+  videoWrapHidden: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    opacity: 0,
+    height: 200,
+    zIndex: -1,
   },
-  errorText: {
-    fontSize: 14,
-    color: Colors.error,
-    textAlign: 'center',
-  },
-  playerCard: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: '#111827',
-    marginBottom: 16,
-  },
-  playerMedia: {
-    height: 210,
-    backgroundColor: '#020617',
+  videoContainer: { height: 200, backgroundColor: '#000' },
+  videoPlaceholder: {
+    height: 200,
+    backgroundColor: '#0f172a',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  playerOverlay: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: 'rgba(15, 23, 42, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  playerMeta: {
-    padding: 16,
-  },
-  playerContentTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 4,
-  },
-  playerBreadcrumb: {
+  playerEmptyHint: {
+    paddingVertical: 12,
     fontSize: 13,
-    color: '#E5E7EB',
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+
+  articleWrap: {
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  articleTitle: {
+    fontSize: 18,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.text,
     marginBottom: 8,
   },
-  playerDescription: {
+  articleDescription: {
     fontSize: 14,
-    color: '#D1D5DB',
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
     marginBottom: 12,
+    lineHeight: 20,
   },
-  articleText: {
+  articleBody: {
     fontSize: 14,
-    color: '#E5E7EB',
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.text,
+    lineHeight: 22,
   },
-  primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: Colors.primary,
-    gap: 6,
-  },
-  primaryButtonText: {
+  articlePlaceholder: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
   },
-  playerEmpty: {
-    borderRadius: 16,
-    paddingVertical: 32,
-    paddingHorizontal: 24,
-    backgroundColor: '#111827',
-    alignItems: 'center',
+
+  courseTitle: {
+    fontSize: 20,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.text,
+    marginBottom: 8,
+  },
+  courseDescription: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
+    lineHeight: 20,
     marginBottom: 16,
   },
-  playerEmptyTitle: {
-    marginTop: 12,
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    textAlign: 'center',
+
+  progressCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
-  playerEmptySubtitle: {
-    marginTop: 6,
-    fontSize: 14,
-    color: '#D1D5DB',
-    textAlign: 'center',
-  },
-  playlistCard: {
-    borderRadius: 16,
-    backgroundColor: '#FFFFFF',
-    padding: 12,
-  },
-  playlistHeader: {
+  progressLabel: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: Colors.textSecondary,
+    letterSpacing: 1,
     marginBottom: 8,
   },
-  playlistTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+  progressCardRow: { flexDirection: 'row', alignItems: 'center' },
+  progressIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  progressStats: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.text,
   },
-  playlistSubtitle: {
-    marginTop: 2,
-    fontSize: 13,
-    color: Colors.textSecondary,
+
+  sectionTitle: {
+    fontSize: 16,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.text,
+    marginBottom: 12,
   },
-  lessonSection: {
-    borderRadius: 12,
-    backgroundColor: '#F9FAFB',
-    marginTop: 8,
-    overflow: 'hidden',
-  },
+  contentCard: { backgroundColor: Colors.white, borderRadius: 14, padding: 4, borderWidth: 1, borderColor: Colors.border },
+
+  lessonSection: { marginBottom: 4 },
   lessonHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 14,
     paddingHorizontal: 12,
-    paddingVertical: 10,
   },
-  lessonHeaderActive: {
-    backgroundColor: '#E5E7EB',
-  },
+  lessonChevron: { marginRight: 8 },
   lessonTitle: {
+    flex: 1,
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.text,
   },
-  lessonSubtitle: {
-    fontSize: 12,
+  lessonTopicCount: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
   },
-  topicList: {
-    paddingHorizontal: 8,
-    paddingBottom: 8,
-  },
+  topicList: { paddingHorizontal: 8, paddingBottom: 8 },
   topicRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginTop: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginTop: 6,
+    backgroundColor: '#F3F4F6',
   },
-  topicRowActive: {
-    backgroundColor: '#E0F2FE',
+  topicRowCompleted: {
+    backgroundColor: Colors.primaryLight,
   },
+  topicIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  topicIconWrapActive: {
+    backgroundColor: Colors.primary,
+  },
+  topicContent: { flex: 1 },
   topicTitle: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
-  topicTitleActive: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.text,
-    fontWeight: '600',
+  },
+  topicSubtitle: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
+    marginTop: 2,
   },
 });
 
