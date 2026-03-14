@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,9 @@ import {
   ActivityIndicator,
   FlatList,
   ScrollView,
+  BackHandler,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Colors } from '@/constants/Colors';
 import { courseService, type ServiceCourse } from '@/services/course.service';
@@ -16,20 +18,20 @@ import { serviceService } from '@/services/service.service';
 import type { StudentService } from '@/types/service';
 import { useAuth } from '@/context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
+import { Typography } from '@/constants/typography';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 type TabKey = 'chat' | 'courses' | 'attendance';
 
-interface ServiceMetaFromParams {
-  serviceId: string;
-  batchId?: string;
-}
 
 export const options = {
   href: null,
 };
 
 export default function StudentServiceExploreScreen() {
-  const { serviceId, batchId } = useLocalSearchParams<ServiceMetaFromParams>();
+  const params = useLocalSearchParams();
+  const serviceId = params.serviceId as string | undefined;
+  const batchId = params.batchId as string | undefined;
   const router = useRouter();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<TabKey>('courses');
@@ -46,6 +48,16 @@ export default function StudentServiceExploreScreen() {
   const [attendanceRange, setAttendanceRange] = useState<{ start?: Date; end?: Date }>({});
   const [isLoadingAttendance, setIsLoadingAttendance] = useState(false);
   const [attendanceError, setAttendanceError] = useState<string | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        router.navigate('/(student)/my-services' as any);
+        return true;
+      });
+      return () => sub.remove();
+    }, [router])
+  );
 
   useEffect(() => {
     if (!user?.id || !serviceId) return;
@@ -194,34 +206,44 @@ export default function StudentServiceExploreScreen() {
     return date.toLocaleString();
   };
 
-  const renderTabPill = (key: TabKey, label: string, icon: keyof typeof Ionicons.glyphMap) => {
+  const renderTabPill = (key: TabKey, label: string) => {
     const isActive = activeTab === key;
     return (
       <TouchableOpacity
         key={key}
-        style={[styles.tabPill, isActive && styles.tabPillActive]}
+        style={styles.tabItem}
         onPress={() => setActiveTab(key)}
         activeOpacity={0.9}
       >
-        <Ionicons
-          name={icon}
-          size={16}
-          color={isActive ? '#FFF' : Colors.textSecondary}
-          style={{ marginRight: 6 }}
-        />
-        <Text style={[styles.tabPillText, isActive && styles.tabPillTextActive]}>{label}</Text>
+        <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>{label}</Text>
+        {isActive && <View style={styles.tabUnderline} />}
       </TouchableOpacity>
     );
   };
 
-  const renderCourseItem = ({ item }: { item: ServiceCourse }) => (
-    <View style={styles.courseCard}>
-      <View style={styles.courseHeader}>
-        <Text style={styles.courseTitle} numberOfLines={2}>
-          {item.title}
-        </Text>
+  const renderCourseItem = ({ item, index }: { item: ServiceCourse; index: number }) => {
+    // Placeholder duration and state until backend provides real values
+    const durationLabel = 'Duration: 45 mins';
+    const isFirst = index === 0;
+    const ctaLabel = isFirst ? 'Resume' : 'Start';
+
+    return (
+      <View style={styles.courseCard}>
+        {/* Left: small media icon */}
+        <View style={[styles.courseIconCircle, isFirst && styles.courseIconCircleActive]}>
+        <MaterialIcons name="video-collection" size={24} color={Colors.primary} />
+        </View>
+
+        {/* Middle: title + duration */}
+        <View style={styles.courseInfo}>
+          <Text style={styles.courseTitle} numberOfLines={1}>
+            {item.title}
+          </Text>
+        </View>
+
+        {/* Right: CTA button */}
         <TouchableOpacity
-          style={styles.viewCourseButton}
+          style={[styles.courseCtaButton, !isFirst && styles.courseCtaButtonSecondary]}
           activeOpacity={0.9}
           onPress={() =>
             router.push({
@@ -230,14 +252,34 @@ export default function StudentServiceExploreScreen() {
             })
           }
         >
-          <Text style={styles.viewCourseButtonText}>View Course</Text>
+          <Text
+            style={[
+              styles.courseCtaText,
+              !isFirst && styles.courseCtaTextSecondary,
+            ]}
+          >
+            {ctaLabel}
+          </Text>
         </TouchableOpacity>
       </View>
-    </View>
-  );
+    );
+  };
 
   const renderAttendanceCalendar = () => {
     const matrix = getMonthMatrix();
+
+    // Count present / absent / not-marked for the currently displayed month
+    const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+    let presentCount = 0;
+    let absentCount = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const m = (calendarMonth + 1).toString().padStart(2, '0');
+      const day = d.toString().padStart(2, '0');
+      const rec = attendanceByDate.get(`${calendarYear}-${m}-${day}`);
+      if (rec?.status === 'present') presentCount++;
+      else if (rec?.status === 'absent') absentCount++;
+    }
+    const notMarkedCount = daysInMonth - presentCount - absentCount;
 
     const getStatusForDay = (day: number | null): AttendanceRecord | null => {
       if (!day) return null;
@@ -255,6 +297,28 @@ export default function StudentServiceExploreScreen() {
 
     return (
       <View>
+        {/* Quick overview cards */}
+        <View style={styles.overviewRow}>
+          <View style={[styles.overviewCard, styles.overviewCardPresent]}>
+            <Text style={styles.overviewLabel}>PRESENT</Text>
+            <Text style={[styles.overviewCount, styles.overviewCountPresent]}>
+              {String(presentCount).padStart(2, '0')}
+            </Text>
+          </View>
+          <View style={[styles.overviewCard, styles.overviewCardAbsent]}>
+            <Text style={styles.overviewLabel}>ABSENT</Text>
+            <Text style={[styles.overviewCount, styles.overviewCountAbsent]}>
+              {String(absentCount).padStart(2, '0')}
+            </Text>
+          </View>
+          <View style={[styles.overviewCard, styles.overviewCardNeutral]}>
+            <Text style={styles.overviewLabel}>NOT MARKED</Text>
+            <Text style={[styles.overviewCount, styles.overviewCountNeutral]}>
+              {String(notMarkedCount).padStart(2, '0')}
+            </Text>
+          </View>
+        </View>
+
         <View style={styles.calendarHeaderRow}>
           <TouchableOpacity onPress={goToPrevMonth} style={styles.monthNavButton}>
             <Ionicons name="chevron-back" size={18} color={Colors.text} />
@@ -311,13 +375,12 @@ export default function StudentServiceExploreScreen() {
           ))}
         </View>
 
-        {attendanceRange.start && attendanceRange.end ? (
-          <Text style={styles.rangeText}>
-            Showing attendance between{' '}
-            {attendanceRange.start.toLocaleDateString()} and{' '}
-            {attendanceRange.end.toLocaleDateString()}
-          </Text>
-        ) : null}
+        <Text style={styles.rangeText}>
+          Attendance for {monthNames[calendarMonth]} {calendarYear}
+          {attendanceRange.start
+            ? ` · from ${attendanceRange.start.toLocaleDateString()} to ${new Date().toLocaleDateString()}`
+            : ''}
+        </Text>
       </View>
     );
   };
@@ -419,62 +482,40 @@ export default function StudentServiceExploreScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <Text style={styles.title}>
-          {serviceDetails?.name ?? 'Service Overview'}
-        </Text>
-        <Text style={styles.subtitle}>
-          Track your courses, attendance, and upcoming chat features for this service.
-        </Text>
-      </View>
-
       <View style={styles.serviceMetaCard}>
-        <View style={styles.serviceMetaRow}>
-          <Ionicons name="briefcase-outline" size={18} color={Colors.primary} />
-          <View style={{ flex: 1 }}>
+        <View style={styles.serviceHeroRow}>
+          <View style={styles.serviceThumbnail}>
+            <Ionicons
+              name="image"
+              size={28}
+              color={Colors.primary}
+              style={styles.serviceThumbnailIcon}
+            />
+          </View>
+
+          <View style={styles.serviceHeroText}>
             <Text style={styles.serviceMetaTitle} numberOfLines={1}>
               {serviceDetails?.name ?? 'Service'}
             </Text>
-            {serviceDetails?.description ? (
-              <Text style={styles.serviceMetaDescription} numberOfLines={2}>
-                {serviceDetails.description}
+
+            <Text style={styles.serviceBatchLine} numberOfLines={1}>
+              {serviceDetails?.batchName ?? 'Batch not assigned'}
+              {serviceDetails?.schedule ? ` • ${formatSchedule(serviceDetails.schedule)}` : ''}
+            </Text>
+
+            {/* <View style={styles.metaInfoRow}>
+              <Ionicons name="calendar-outline" size={16} color={Colors.textSecondary} />
+              <Text style={styles.metaInfoText}>
+                {formatSchedule(serviceDetails?.schedule)}
               </Text>
-            ) : null}
+            </View> */}
+            <View style={styles.metaInfoRow}>
+              <Ionicons name="time-outline" size={16} color={Colors.textSecondary} />
+              <Text style={styles.metaInfoText}>
+                {formatNextClass(serviceDetails?.nextClass)}
+              </Text>
+            </View>
           </View>
-        </View>
-
-        <View style={styles.serviceChipsRow}>
-          {serviceDetails?.batchName ? (
-            <View style={styles.metaChip}>
-              <Ionicons name="school-outline" size={14} color={Colors.textSecondary} />
-              <Text style={styles.metaChipText} numberOfLines={1}>
-                {serviceDetails.batchName}
-              </Text>
-            </View>
-          ) : null}
-
-          {serviceDetails?.status ? (
-            <View style={styles.metaChip}>
-              <Ionicons name="pulse-outline" size={14} color={Colors.textSecondary} />
-              <Text style={styles.metaChipText} numberOfLines={1}>
-                {serviceDetails.status.charAt(0).toUpperCase() + serviceDetails.status.slice(1)}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-
-        <View style={styles.metaInfoRow}>
-          <Ionicons name="calendar-outline" size={16} color={Colors.textSecondary} />
-          <Text style={styles.metaInfoText}>
-            {formatSchedule(serviceDetails?.schedule)}
-          </Text>
-        </View>
-
-        <View style={styles.metaInfoRow}>
-          <Ionicons name="time-outline" size={16} color={Colors.textSecondary} />
-          <Text style={styles.metaInfoText}>
-            {formatNextClass(serviceDetails?.nextClass)}
-          </Text>
         </View>
 
         {serviceMetaError ? (
@@ -483,9 +524,9 @@ export default function StudentServiceExploreScreen() {
       </View>
 
       <View style={styles.tabsRow}>
-        {renderTabPill('chat', 'Chat', 'chatbubbles-outline')}
-        {renderTabPill('courses', 'Courses', 'book-outline')}
-        {renderTabPill('attendance', 'Attendance', 'calendar-outline')}
+        {renderTabPill('chat', 'Chat')}
+        {renderTabPill('courses', 'Courses')}
+        {renderTabPill('attendance', 'Attendance')}
       </View>
 
       <View style={styles.contentContainer}>{renderContent()}</View>
@@ -499,36 +540,56 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   headerRow: {
-    paddingHorizontal: 16,
     paddingTop: 24,
     paddingBottom: 8,
   },
   title: {
     fontSize: 22,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.extraBold,
     color: Colors.text,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 14,
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
   },
   serviceMetaCard: {
     marginHorizontal: 16,
-    marginTop: 8,
+    marginTop: 18,
     borderRadius: 16,
-    padding: 16,
-    backgroundColor: '#EEF2FF',
   },
-  serviceMetaRow: {
+  serviceHeroRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
+  },
+  serviceThumbnail: {
+    width: 90,
+    height: 90,
+    borderRadius: 16,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  serviceThumbnailIcon: {
+    backgroundColor: Colors.primaryLight,
+    borderRadius: 999,
+    padding: 10,
+  },
+  serviceHeroText: {
+    flex: 1,
   },
   serviceMetaTitle: {
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.extraBold,
     color: Colors.text,
+  },
+  serviceBatchLine: {
+    marginTop: 2,
+    fontSize: 13,
+    color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
   },
   serviceMetaDescription: {
     marginTop: 4,
@@ -537,13 +598,13 @@ const styles = StyleSheet.create({
   },
   serviceMetaLabel: {
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.textSecondary,
   },
   serviceMetaValue: {
     marginTop: 4,
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.text,
   },
   serviceChipsRow: {
@@ -564,47 +625,49 @@ const styles = StyleSheet.create({
   metaChipText: {
     fontSize: 12,
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.semiBold,
   },
   metaInfoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 6,
+    marginTop: 4,
   },
   metaInfoText: {
     fontSize: 13,
     color: Colors.textSecondary,
     flex: 1,
+    fontFamily: Typography.fontFamily.regular,
   },
   metaErrorText: {
     marginTop: 8,
     fontSize: 12,
     color: Colors.error,
+    fontFamily: Typography.fontFamily.regular,
   },
   tabsRow: {
     flexDirection: 'row',
     paddingHorizontal: 16,
     marginTop: 16,
-    gap: 8,
   },
-  tabPill: {
-    flexDirection: 'row',
+  tabItem: {
+    marginRight: 24,
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: '#F3F4F6',
   },
-  tabPillActive: {
-    backgroundColor: Colors.primary,
-  },
-  tabPillText: {
-    fontSize: 13,
+  tabLabel: {
+    fontSize: 14,
     color: Colors.textSecondary,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.semiBold,
   },
-  tabPillTextActive: {
-    color: '#FFF',
+  tabLabelActive: {
+    color: Colors.primary,
+  },
+  tabUnderline: {
+    marginTop: 4,
+    height: 2,
+    width: '100%',
+    borderRadius: 999,
+    backgroundColor: Colors.primary,
   },
   contentContainer: {
     flex: 1,
@@ -638,48 +701,75 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.extraBold,
     color: Colors.text,
     marginBottom: 4,
   },
   emptySubtitle: {
     fontSize: 14,
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
     textAlign: 'center',
   },
   courseCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: '#FFF',
     borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.04,
     shadowRadius: 8,
     elevation: 1,
   },
-  courseHeader: {
-    flexDirection: 'row',
+  courseIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: Colors.background,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  courseIconCircleActive: {
+    backgroundColor: Colors.primaryLight,
+  },
+  courseInfo: {
+    flex: 1,
     justifyContent: 'space-between',
-    gap: 12,
   },
   courseTitle: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    fontFamily: Typography.fontFamily.extraBold,
     color: Colors.text,
+    marginBottom: 2,
   },
-  viewCourseButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
+  courseSubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
+  },
+  courseCtaButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 14,
     backgroundColor: Colors.primary,
   },
-  viewCourseButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FFF',
+  courseCtaButtonSecondary: {
+    backgroundColor: '#EFF6FF',
+  },
+  courseCtaText: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.semiBold,
+    top:-2,
+    color: Colors.white,
+  },
+  courseCtaTextSecondary: {
+    color: Colors.primary,
   },
   comingSoonContainer: {
     paddingHorizontal: 16,
@@ -691,28 +781,64 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#DBEAFE',
+    borderRadius: 14,
+    backgroundColor: Colors.primaryLight,
     marginBottom: 16,
     gap: 8,
   },
   comingSoonBadgeText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.primary,
   },
   comingSoonTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.extraBold,
     color: Colors.text,
     marginBottom: 8,
     textAlign: 'center',
   },
   comingSoonSubtitle: {
     fontSize: 14,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
     textAlign: 'center',
   },
+  overviewRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  overviewCard: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  overviewCardPresent: { backgroundColor: '#F0FDF4' },
+  overviewCardAbsent: { backgroundColor: '#FFF5F5' },
+  overviewCardNeutral: { backgroundColor: '#FFFBEB' },
+  overviewLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
+    color: Colors.textSecondary,
+    marginBottom: 6,
+  },
+  overviewCount: {
+    fontSize: 28,
+    fontWeight: '700',
+  },
+  overviewCountPresent: { color: '#22C55E' },
+  overviewCountAbsent: { color: '#EF4444' },
+  overviewCountNeutral: { color: '#F97316' },
   calendarHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -721,12 +847,12 @@ const styles = StyleSheet.create({
   },
   calendarMonthLabel: {
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.extraBold,
     color: Colors.text,
   },
   monthNavButton: {
     padding: 4,
-    borderRadius: 999,
+    borderRadius: 14,
   },
   weekdayRow: {
     flexDirection: 'row',
@@ -736,7 +862,7 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.textSecondary,
   },
   weekRow: {
@@ -747,7 +873,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 40,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
     marginHorizontal: 2,
@@ -755,6 +881,7 @@ const styles = StyleSheet.create({
   dayCellText: {
     fontSize: 13,
     color: Colors.text,
+    fontFamily: Typography.fontFamily.regular,
   },
   legendRow: {
     flexDirection: 'row',
@@ -771,17 +898,19 @@ const styles = StyleSheet.create({
   legendDot: {
     width: 12,
     height: 12,
-    borderRadius: 999,
+    borderRadius: 14,
   },
   legendLabel: {
     fontSize: 12,
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
   },
   rangeText: {
     marginTop: 8,
     fontSize: 12,
     color: Colors.textSecondary,
     textAlign: 'center',
+    fontFamily: Typography.fontFamily.regular,
   },
 });
 

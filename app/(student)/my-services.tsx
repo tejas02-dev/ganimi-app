@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { useAuth } from '@/context/AuthContext';
 import { serviceService } from '@/services/service.service';
 import type { StudentService } from '@/types/service';
 import { Ionicons } from '@expo/vector-icons';
+import { Typography } from '@/constants/typography';
 
 export default function StudentMyServicesScreen() {
   const router = useRouter();
@@ -22,6 +23,7 @@ export default function StudentMyServicesScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'ongoing' | 'completed'>('ongoing');
 
   useEffect(() => {
     loadServices();
@@ -65,62 +67,69 @@ export default function StudentMyServicesScreen() {
     return date.toLocaleString();
   };
 
-  const renderServiceCard = ({ item }: { item: StudentService }) => (
-    <View style={styles.card}>
-      <View style={styles.cardHeaderRow}>
-        <View style={styles.cardTitleCol}>
+  const filteredServices = useMemo(() => {
+    if (activeTab === 'completed') {
+      return services.filter((s) => s.status?.toLowerCase() === 'completed');
+    }
+    // Treat anything not explicitly completed as ongoing
+    return services.filter((s) => s.status?.toLowerCase() !== 'completed');
+  }, [activeTab, services]);
+
+  const renderServiceCard = ({ item }: { item: StudentService }) => {
+    // Placeholder progress values until backend provides real progress
+    const progress = 0.65;
+    const progressPercentLabel = '65% Complete';
+    const lessonsLabel = '12/18 Lessons';
+
+    return (
+      <View style={styles.card}>
+        {/* Image placeholder */}
+        <View style={styles.cardImage}>
+          <Ionicons
+            name="image-outline"
+            size={32}
+            color={Colors.primary}
+            style={styles.cardImageIcon}
+          />
+        </View>
+
+        {/* Content */}
+        <View style={styles.cardBody}>
+        <View style={styles.cardTitleRow}>
+
           <Text style={styles.cardTitle} numberOfLines={1}>
             {item.name}
           </Text>
-          {item.description ? (
-            <Text style={styles.cardSubtitle} numberOfLines={2}>
-              {item.description}
-            </Text>
-          ) : null}
-        </View>
-        {item.status ? (
-          <View style={styles.statusPill}>
-            <Text style={styles.statusPillText}>
-              {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-
-      {item.batchName ? (
-        <View style={styles.infoRow}>
-          <Ionicons name="school-outline" size={16} color={Colors.textSecondary} />
-          <Text style={styles.infoText} numberOfLines={1}>
-            Batch: {item.batchName}
+          <Text style={styles.cardProvider} numberOfLines={1}>
+            {item.batchName ? item.batchName : 'Enrolled service'}
           </Text>
+          </View>
+          {/* Progress row */}
+          {/* <View style={styles.progressRow}>
+            <Text style={styles.progressLabel}>{progressPercentLabel}</Text>
+            <Text style={styles.progressMeta}>{lessonsLabel}</Text>
+          </View>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+          </View> */}
+
+          {/* View details button */}
+          <TouchableOpacity
+            style={styles.detailsButton}
+            activeOpacity={0.9}
+            onPress={() =>
+              router.push({
+                pathname: '/(student)/service/[serviceId]' as any,
+                params: { serviceId: item.id, batchId: item.batchId ?? '' },
+              })
+            }
+          >
+            <Text style={styles.detailsButtonText}>View Details</Text>
+          </TouchableOpacity>
         </View>
-      ) : null}
-
-      <View style={styles.infoRow}>
-        <Ionicons name="calendar-outline" size={16} color={Colors.textSecondary} />
-        <Text style={styles.infoText}>{formatSchedule(item.schedule)}</Text>
       </View>
-
-      <View style={styles.infoRow}>
-        <Ionicons name="time-outline" size={16} color={Colors.textSecondary} />
-        <Text style={styles.infoText}>{formatNextClass(item.nextClass)}</Text>
-      </View>
-
-      <TouchableOpacity
-        style={styles.exploreButton}
-        activeOpacity={0.9}
-        onPress={() =>
-          router.push({
-            pathname: '/(student)/service/[serviceId]' as any,
-            params: { serviceId: item.id, batchId: item.batchId ?? '' },
-          })
-        }
-      >
-        <Ionicons name="compass-outline" size={16} color="#FFF" />
-        <Text style={styles.exploreButtonText}>Explore</Text>
-      </TouchableOpacity>
-    </View>
-  );
+    );
+  };
 
   if (isLoading && !isRefreshing) {
     return (
@@ -134,14 +143,48 @@ export default function StudentMyServicesScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.title}>My Services</Text>
-        <Text style={styles.subtitle}>Services you&apos;re currently enrolled in</Text>
+        <Text style={styles.title}>My Learning</Text>
+        <Text style={styles.subtitle}>Track your enrolled services</Text>
+      </View>
+
+      {/* Tabs */}
+      <View style={styles.tabsRow}>
+        <TouchableOpacity
+          style={styles.tabItem}
+          activeOpacity={0.8}
+          onPress={() => setActiveTab('ongoing')}
+        >
+          <Text
+            style={[
+              styles.tabLabel,
+              activeTab === 'ongoing' && styles.tabLabelActive,
+            ]}
+          >
+            Ongoing
+          </Text>
+          {activeTab === 'ongoing' && <View style={styles.tabUnderline} />}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.tabItem}
+          activeOpacity={0.8}
+          onPress={() => setActiveTab('completed')}
+        >
+          <Text
+            style={[
+              styles.tabLabel,
+              activeTab === 'completed' && styles.tabLabelActive,
+            ]}
+          >
+            Completed
+          </Text>
+          {activeTab === 'completed' && <View style={styles.tabUnderline} />}
+        </TouchableOpacity>
       </View>
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
       <FlatList
-        data={services}
+        data={filteredServices}
         keyExtractor={(item) => item.id}
         renderItem={renderServiceCard}
         contentContainerStyle={styles.listContent}
@@ -151,9 +194,13 @@ export default function StudentMyServicesScreen() {
         ListEmptyComponent={
           !isLoading && !error ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No services yet</Text>
+              <Text style={styles.emptyTitle}>
+                {activeTab === 'ongoing' ? 'No ongoing services' : 'No completed services yet'}
+              </Text>
               <Text style={styles.emptySubtitle}>
-                When you enroll in a service, it will appear here.
+                {activeTab === 'ongoing'
+                  ? 'New services you enroll in will appear here.'
+                  : 'Completed services will move to this tab.'}
               </Text>
             </View>
           ) : null
@@ -181,18 +228,42 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     paddingHorizontal: 16,
-    paddingTop: 24,
-    paddingBottom: 8,
+    paddingBottom: 4,
+    paddingTop: 8,
   },
   title: {
     fontSize: 22,
-    fontWeight: '700',
     color: Colors.text,
+    fontFamily: Typography.fontFamily.extraBold,
   },
   subtitle: {
-    marginTop: 8,
+    marginTop: 4,
+    fontSize: 13,
+    color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
+  },
+  tabsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  tabItem: {
+    marginRight: 24,
+  },
+  tabLabel: {
     fontSize: 14,
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.semiBold,
+  },
+  tabLabelActive: {
+    color: Colors.primary,
+  },
+  tabUnderline: {
+    marginTop: 4,
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: Colors.primary,
   },
   errorText: {
     paddingHorizontal: 16,
@@ -206,74 +277,94 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: 20,
+    marginBottom: 16,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.04,
     shadowRadius: 8,
     elevation: 1,
   },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  cardTitleCol: {
-    flex: 1,
-    marginRight: 12,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  cardSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
-  statusPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: '#ECFEFF',
-  },
-  statusPillText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.primary,
-    textTransform: 'capitalize',
-  },
-  infoRow: {
+  cardTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
+    justifyContent: 'space-between',
   },
-  infoText: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    flex: 1,
-  },
-  exploreButton: {
-    marginTop: 10,
-    alignSelf: 'flex-end',
-    flexDirection: 'row',
+  cardImage: {
+    height: 140,
+    backgroundColor: Colors.backgroundSecondary,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 18,
-    paddingVertical: 8,
+  },
+  cardImageIcon: {
+    backgroundColor: Colors.primaryLight,
+    borderRadius: 999,
+    padding: 14,
+  },
+  cardBody: {
+    padding: 16,
+  },
+  cardTitle: {
+    fontSize: 16,
+    color: Colors.text,
+    fontFamily: Typography.fontFamily.extraBold,
+  },
+  cardProvider: {
+    marginTop: 4,
+    fontSize: 12,
+    paddingHorizontal: 10,
+    paddingTop: 2,
+    paddingBottom: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.backgroundSecondary,
+    color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.semiBold,
+  },
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  progressLabel: {
+    fontSize: 13,
+    color: Colors.primary,
+    fontFamily: Typography.fontFamily.semiBold,
+  },
+  progressMeta: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: '#E5E7EB',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: 6,
     borderRadius: 999,
     backgroundColor: Colors.primary,
   },
-  exploreButtonText: {
+  detailsButton: {
+    marginTop: 14,
+    borderRadius: 14,
+    backgroundColor: Colors.primary,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailsButtonText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#FFF',
-    marginLeft: 6,
+    top: -2,
+    color: Colors.white,
+    fontFamily: Typography.fontFamily.semiBold,
   },
   emptyState: {
     padding: 24,
@@ -281,7 +372,7 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.extraBold,
     color: Colors.text,
     marginBottom: 4,
   },
@@ -289,6 +380,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textSecondary,
     textAlign: 'center',
+    fontFamily: Typography.fontFamily.regular,
   },
 });
 

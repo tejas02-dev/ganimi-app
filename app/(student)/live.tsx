@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -8,12 +8,15 @@ import {
   Alert,
   ScrollView,
   Linking,
+  Share,
+  RefreshControl,
 } from 'react-native';
 import { Colors } from '@/constants/Colors';
 import { apiService } from '@/services/api';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/context/AuthContext';
 import { useFocusEffect } from '@react-navigation/native';
+import { Typography } from '@/constants/typography';
 
 type StudentMeeting = {
   id: string;
@@ -23,12 +26,58 @@ type StudentMeeting = {
   password?: string;
   duration?: number;
   status?: string;
+  description?: string;
+  instructorName?: string;
 };
+
+const now = () => new Date();
 
 export default function StudentLiveScreen() {
   const { user } = useAuth();
   const [meetings, setMeetings] = useState<StudentMeeting[]>([]);
   const [isLoadingMeetings, setIsLoadingMeetings] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
+
+  const onRefresh = async () => {
+    setIsRefreshing(true);
+    await loadMeetings();
+    setIsRefreshing(false);
+  };
+
+  const getEndTime = (m: StudentMeeting): Date => {
+    const start = new Date(m.startTime);
+    const mins = typeof m.duration === 'number' ? m.duration : 90;
+    return new Date(start.getTime() + mins * 60 * 1000);
+  };
+
+  const { activeMeeting, heroMeeting, upcomingList, pastList } = useMemo(() => {
+    const n = now().getTime();
+    let active: StudentMeeting | null = null;
+    const upcoming: StudentMeeting[] = [];
+    const past: StudentMeeting[] = [];
+    const sorted = [...meetings].sort(
+      (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    );
+    for (const m of sorted) {
+      const start = new Date(m.startTime).getTime();
+      const end = getEndTime(m).getTime();
+      if (start <= n && end >= n) {
+        if (!active) active = m;
+        else upcoming.push(m);
+      } else if (start > n) upcoming.push(m);
+      else past.push(m);
+    }
+    // When no meeting is "live", show the next upcoming one in the hero so the card is visible
+    const heroMeeting = active ?? (upcoming[0] ?? null);
+    const upcomingForList = active ? upcoming : upcoming.slice(1);
+    return {
+      activeMeeting: active,
+      heroMeeting,
+      upcomingList: upcomingForList,
+      pastList: past,
+    };
+  }, [meetings]);
 
   const formatMeetingDate = (iso: string): string => {
     try {
@@ -54,6 +103,39 @@ export default function StudentLiveScreen() {
       });
     } catch {
       return '';
+    }
+  };
+
+  const formatTimeRange = (m: StudentMeeting): string => {
+    const start = new Date(m.startTime);
+    const end = getEndTime(m);
+    const today = now();
+    const isToday =
+      start.getDate() === today.getDate() &&
+      start.getMonth() === today.getMonth() &&
+      start.getFullYear() === today.getFullYear();
+    const dayLabel = isToday ? 'Today' : formatMeetingDate(m.startTime);
+    return `${dayLabel}, ${formatMeetingTime(m.startTime)} - ${end.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
+  };
+
+  const formatDateBox = (iso: string): { day: string; month: string } => {
+    try {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return { day: '—', month: '—' };
+      return {
+        day: d.getDate().toString(),
+        month: d.toLocaleDateString(undefined, { month: 'short' }).toUpperCase(),
+      };
+    } catch {
+      return { day: '—', month: '—' };
+    }
+  };
+
+  const copyPassword = async (password: string) => {
+    try {
+      await Share.share({ message: password, title: 'Meeting password' });
+    } catch {
+      Alert.alert('Password', password);
     }
   };
 
@@ -106,24 +188,28 @@ export default function StudentLiveScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <View style={styles.headerTextWrap}>
-          <Text style={styles.title}>Live Sessions</Text>
-          <Text style={styles.subtitle}>
-            Join your scheduled live classes here.
-          </Text>
-        </View>
+      
+      {/* Tabs */}
+      <View style={styles.tabsRow}>
         <TouchableOpacity
-          style={[styles.refreshButton, isLoadingMeetings && styles.refreshButtonDisabled]}
-          onPress={() => loadMeetings()}
-          disabled={isLoadingMeetings}
-          activeOpacity={0.7}
+          style={styles.tabItem}
+          onPress={() => setActiveTab('upcoming')}
+          activeOpacity={0.8}
         >
-          {isLoadingMeetings ? (
-            <ActivityIndicator size="small" color={Colors.primary} />
-          ) : (
-            <Ionicons name="refresh" size={22} color={Colors.primary} />
-          )}
+          <Text style={[styles.tabLabel, activeTab === 'upcoming' && styles.tabLabelActive]}>
+            Upcoming
+          </Text>
+          {activeTab === 'upcoming' && <View style={styles.tabUnderline} />}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.tabItem}
+          onPress={() => setActiveTab('past')}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.tabLabel, activeTab === 'past' && styles.tabLabelActive]}>
+            Past
+          </Text>
+          {activeTab === 'past' && <View style={styles.tabUnderline} />}
         </TouchableOpacity>
       </View>
 
@@ -132,82 +218,147 @@ export default function StudentLiveScreen() {
           <ActivityIndicator size="small" color={Colors.primary} />
           <Text style={styles.meetingsLoadingText}>Loading meetings...</Text>
         </View>
-      ) : meetings.length === 0 ? (
-        <View style={styles.meetingsEmpty}>
-          <Text style={styles.meetingsEmptyTitle}>No upcoming meetings</Text>
-          <Text style={styles.meetingsEmptySubtitle}>
-            Your live sessions will appear here when scheduled.
-          </Text>
-        </View>
+      ) : activeTab === 'past' ? (
+        <ScrollView
+          style={styles.meetingsScroll}
+          contentContainerStyle={styles.meetingsList}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+          }
+        >
+          {pastList.length === 0 ? (
+            <View style={styles.meetingsEmpty}>
+              <Text style={styles.meetingsEmptyTitle}>No past sessions</Text>
+              <Text style={styles.meetingsEmptySubtitle}>
+                Past live sessions will appear here.
+              </Text>
+            </View>
+          ) : (
+            pastList.map((meeting) => (
+              <View key={meeting.id} style={styles.pastCard}>
+                <View style={styles.pastDateBox}>
+                  <Text style={styles.pastDateDay}>{formatDateBox(meeting.startTime).day}</Text>
+                  <Text style={styles.pastDateMonth}>{formatDateBox(meeting.startTime).month}</Text>
+                </View>
+                <View style={styles.pastContent}>
+                  <Text style={styles.pastTitle} numberOfLines={1}>{meeting.title}</Text>
+                  <Text style={styles.pastMeta}>
+                    {formatMeetingTime(meeting.startTime)}
+                    {meeting.instructorName ? ` • ${meeting.instructorName}` : ''}
+                  </Text>
+                </View>
+              </View>
+            ))
+          )}
+        </ScrollView>
       ) : (
         <ScrollView
           style={styles.meetingsScroll}
           contentContainerStyle={styles.meetingsList}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+          }
         >
-          {meetings.map((meeting) => (
-            <View key={meeting.id} style={styles.meetingCard}>
-              <View style={styles.meetingHeaderRow}>
-                <Text style={styles.meetingTitle} numberOfLines={1}>
-                  {meeting.title}
+          {/* Hero card: show active (LIVE NOW) or next upcoming so the card is always visible */}
+          {heroMeeting ? (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>
+                  {activeMeeting ? 'Active Sessions' : 'Next session'}
                 </Text>
-                {meeting.status ? (
-                  <View style={styles.meetingStatusPill}>
-                    <Text style={styles.meetingStatusText}>
-                      {String(meeting.status).toLowerCase()}
-                    </Text>
+                {activeMeeting ? (
+                  <View style={styles.liveBadge}>
+                    <Text style={styles.liveBadgeText}>LIVE NOW</Text>
                   </View>
                 ) : null}
               </View>
-              <View style={styles.meetingMetaRow}>
-                <Ionicons
-                  name="calendar-outline"
-                  size={14}
-                  color={Colors.textSecondary}
-                />
-                <Text style={styles.meetingMetaText} numberOfLines={1}>
-                  {formatMeetingDate(meeting.startTime)}
-                </Text>
-              </View>
-              <View style={styles.meetingMetaRow}>
-                <Ionicons
-                  name="time-outline"
-                  size={14}
-                  color={Colors.textSecondary}
-                />
-                <Text style={styles.meetingMetaText} numberOfLines={1}>
-                  {formatMeetingTime(meeting.startTime)}
-                  {typeof meeting.duration === 'number'
-                    ? ` • ${meeting.duration} min`
-                    : ''}
-                </Text>
-              </View>
-              {meeting.password ? (
-                <View style={styles.meetingMetaRow}>
-                  <Ionicons
-                    name="key-outline"
-                    size={14}
-                    color={Colors.textSecondary}
-                  />
-                  <Text style={styles.meetingPasswordLabel}>Password: </Text>
-                  <Text style={styles.meetingPasswordValue} selectable>
-                    {meeting.password}
-                  </Text>
+              <View style={styles.heroCard}>
+                <View style={styles.heroThumbnail}>
+                  <Ionicons name="videocam-outline" size={40} color={Colors.primary} />
+                  <View style={styles.heroOverlay}>
+                    <Ionicons name="people-outline" size={14} color="#FFF" />
+                    <Text style={styles.heroOverlayText}>— watching</Text>
+                  </View>
                 </View>
-              ) : null}
-              <View style={styles.meetingActions}>
+                <Text style={styles.heroTitle} numberOfLines={1}>{heroMeeting.title}</Text>
+                <Text style={styles.heroTime}>{formatTimeRange(heroMeeting)}</Text>
+                {heroMeeting.description ? (
+                  <Text style={styles.heroDesc} numberOfLines={2}>
+                    {heroMeeting.description}
+                  </Text>
+                ) : (
+                  <Text style={styles.heroDesc} numberOfLines={2}>
+                    Join this live session to participate.
+                  </Text>
+                )}
+                {heroMeeting.password ? (
+                  <View style={styles.passwordRow}>
+                    <Text style={styles.passwordLabel}>MEETING PASSWORD</Text>
+                    <View style={styles.passwordField}>
+                      <Text style={styles.passwordValue} selectable>
+                        {heroMeeting.password}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => copyPassword(heroMeeting.password!)}
+                        style={styles.copyBtn}
+                        hitSlop={8}
+                      >
+                        <Ionicons name="copy-outline" size={18} color={Colors.textSecondary} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : null}
                 <TouchableOpacity
-                  style={styles.meetingJoinButton}
+                  style={styles.joinBtn}
                   activeOpacity={0.9}
-                  onPress={() => handleJoinMeeting(meeting)}
-                  disabled={!meeting.joinUrl}
+                  onPress={() => handleJoinMeeting(heroMeeting)}
+                  disabled={!heroMeeting.joinUrl}
                 >
-                  <Ionicons name="videocam-outline" size={18} color="#FFF" />
-                  <Text style={styles.meetingJoinButtonText}>Join meeting</Text>
+                  <Ionicons name="videocam" size={20} color="#FFF" />
+                  <Text style={styles.joinBtnText}>Join Zoom Meeting</Text>
                 </TouchableOpacity>
               </View>
             </View>
-          ))}
+          ) : null}
+
+          {/* Coming up next */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Coming up next</Text>
+            {upcomingList.length === 0 && !heroMeeting ? (
+              <View style={styles.meetingsEmpty}>
+                <Text style={styles.meetingsEmptyTitle}>No upcoming meetings</Text>
+                <Text style={styles.meetingsEmptySubtitle}>
+                  Your live sessions will appear here when scheduled.
+                </Text>
+              </View>
+            ) : (
+              upcomingList.map((meeting) => {
+                const { day, month } = formatDateBox(meeting.startTime);
+                return (
+                  <View key={meeting.id} style={styles.upcomingCard}>
+                    <View style={styles.upcomingDateBox}>
+                      <Text style={styles.upcomingDateDay}>{day}</Text>
+                      <Text style={styles.upcomingDateMonth}>{month}</Text>
+                    </View>
+                    <View style={styles.upcomingContent}>
+                      <Text style={styles.upcomingTitle} numberOfLines={1}>
+                        {meeting.title}
+                      </Text>
+                      <Text style={styles.upcomingMeta}>
+                        {formatMeetingTime(meeting.startTime)}
+                        {meeting.instructorName ? ` • ${meeting.instructorName}` : ''}
+                      </Text>
+                    </View>
+                    <TouchableOpacity style={styles.bellBtn} hitSlop={8}>
+                      <Ionicons name="notifications-outline" size={22} color={Colors.primary} />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })
+            )}
+          </View>
         </ScrollView>
       )}
     </View>
@@ -217,49 +368,38 @@ export default function StudentLiveScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 32,
+    paddingTop: 16,
     paddingHorizontal: 16,
     backgroundColor: Colors.background,
   },
-  headerRow: {
+
+  tabsRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 16,
   },
-  headerTextWrap: {
-    flex: 1,
-    marginRight: 12,
+  tabItem: {
+    marginRight: 24,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: Colors.text,
-    marginBottom: 4,
-  },
-  subtitle: {
+  tabLabel: {
     fontSize: 14,
     color: Colors.textSecondary,
-    marginBottom: 24,
+    fontFamily: Typography.fontFamily.semiBold,
   },
-  refreshButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: `${Colors.primary}18`,
-    alignItems: 'center',
-    justifyContent: 'center',
+  tabLabelActive: {
+    color: Colors.primary,
   },
-  refreshButtonDisabled: {
-    opacity: 0.7,
+  tabUnderline: {
+    marginTop: 4,
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: Colors.primary,
   },
   meetingsScroll: {
-    marginTop: 8,
+    flex: 1,
     marginBottom: 16,
   },
   meetingsList: {
-    paddingBottom: 16,
-    gap: 10,
+    paddingBottom: 24,
   },
   meetingsLoading: {
     marginTop: 16,
@@ -270,92 +410,260 @@ const styles = StyleSheet.create({
   meetingsLoadingText: {
     fontSize: 13,
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
   },
   meetingsEmpty: {
     marginTop: 24,
   },
   meetingsEmptyTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.extraBold,
     color: Colors.text,
     marginBottom: 4,
   },
   meetingsEmptySubtitle: {
     fontSize: 13,
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
   },
-  meetingCard: {
+  section: {
+    marginBottom: 24,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 8,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    color: Colors.text,
+    fontFamily: Typography.fontFamily.extraBold,
+  },
+  liveBadge: {
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  liveBadgeText: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.extraBold,
+    color: '#FFF',
+    letterSpacing: 0.5,
+  },
+  heroCard: {
     backgroundColor: '#FFF',
     borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  heroThumbnail: {
+    height: 160,
+    backgroundColor: Colors.backgroundSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroOverlay: {
+    position: 'absolute',
+    left: 12,
+    bottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  heroOverlayText: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.regular,
+    top: -2,
+    color: '#FFF',
+  },
+  heroTitle: {
+    fontSize: 17,
+    color: Colors.text,
+    fontFamily: Typography.fontFamily.extraBold,
+    marginTop: 12,
+    marginHorizontal: 14,
+  },
+  heroTime: {
+    fontSize: 13,
+    color: Colors.primary,
+    marginTop: 4,
+    marginHorizontal: 14,
+    fontFamily: Typography.fontFamily.regular,
+  },
+  heroDesc: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 8,
+    marginHorizontal: 14,
+    lineHeight: 20,
+    fontFamily: Typography.fontFamily.regular,
+  },
+  passwordRow: {
+    marginTop: 14,
+    marginHorizontal: 14,
+  },
+  passwordLabel: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.semiBold,
+    letterSpacing: 0.5,
+    color: Colors.textSecondary,
+    marginBottom: 6,
+  },
+  passwordField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.inputBackground,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  passwordValue: {
+    fontSize: 14,
+    color: Colors.text,
+    fontFamily: Typography.fontFamily.semiBold,
+  },
+  copyBtn: {
+    padding: 4,
+  },
+  joinBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.primary,
+    marginHorizontal: 14,
+    marginTop: 14,
+    marginBottom: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
+  },
+  joinBtnText: {
+    fontSize: 15,
+    top: -2,
+    color: '#FFF',
+    fontFamily: Typography.fontFamily.semiBold,
+  },
+  upcomingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    padding: 12,
+    marginVertical: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
     shadowRadius: 6,
     elevation: 1,
   },
-  meetingHeaderRow: {
-    flexDirection: 'row',
+  upcomingDateBox: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: Colors.primary,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
+    justifyContent: 'center',
+    marginRight: 12,
   },
-  meetingTitle: {
+  upcomingDateDay: {
+    fontSize: 18,
+    color: '#FFF',
+    fontFamily: Typography.fontFamily.extraBold,
+  },
+  upcomingDateMonth: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.9)',
+    marginTop: 2,
+    fontFamily: Typography.fontFamily.regular,
+  },
+  upcomingContent: {
     flex: 1,
+    minWidth: 0,
+  },
+  upcomingTitle: {
     fontSize: 15,
-    fontWeight: '600',
     color: Colors.text,
-    marginRight: 8,
+    fontFamily: Typography.fontFamily.extraBold,
   },
-  meetingStatusPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999,
-    backgroundColor: '#E5E7EB',
-  },
-  meetingStatusText: {
-    fontSize: 11,
+  upcomingMeta: {
+    fontSize: 12,
     color: Colors.textSecondary,
-    textTransform: 'capitalize',
+    marginTop: 2,
+    fontFamily: Typography.fontFamily.regular,
   },
-  meetingMetaRow: {
+  upcomingIdRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
     marginTop: 4,
   },
-  meetingMetaText: {
-    fontSize: 13,
+  upcomingId: {
+    fontSize: 11,
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
   },
-  meetingPasswordLabel: {
-    fontSize: 13,
-    color: Colors.textSecondary,
+  bellBtn: {
+    padding: 4,
   },
-  meetingPasswordValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.text,
-  },
-  meetingActions: {
-    marginTop: 10,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-  },
-  meetingJoinButton: {
+  pastCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: Colors.primary,
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    padding: 12,
+    marginVertical: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
   },
-  meetingJoinButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#FFF',
+  pastDateBox: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: Colors.backgroundSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  pastDateDay: {
+    fontSize: 18,
+    color: Colors.text,
+    fontFamily: Typography.fontFamily.extraBold,
+  },
+  pastDateMonth: {
+    fontSize: 10,
+    color: Colors.textSecondary,
+    marginTop: 2,
+    fontFamily: Typography.fontFamily.regular,
+  },
+  pastContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  pastTitle: {
+    fontSize: 15,
+    color: Colors.text,
+    fontFamily: Typography.fontFamily.extraBold,
+  },
+  pastMeta: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+    fontFamily: Typography.fontFamily.regular,
   },
 });

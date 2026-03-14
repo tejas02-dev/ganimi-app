@@ -206,6 +206,7 @@ export default function StudentLayout() {
           drawerIcon: ({ color, size }) => (
             <Ionicons name="heart" size={size} color={color} />
           ),
+          drawerItemStyle: { display: 'none' },
         }}
       />
       <Drawer.Screen
@@ -224,6 +225,7 @@ export default function StudentLayout() {
           drawerIcon: ({ color, size }) => (
             <Ionicons name="time" size={size} color={color} />
           ),
+          drawerItemStyle: { display: 'none' },
         }}
       />
       <Drawer.Screen
@@ -242,6 +244,7 @@ export default function StudentLayout() {
           drawerIcon: ({ color, size }) => (
             <Ionicons name="calendar" size={size} color={color} />
           ),
+          drawerItemStyle: { display: 'none' },
         }}
       />
       <Drawer.Screen

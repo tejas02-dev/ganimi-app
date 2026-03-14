@@ -22,6 +22,7 @@ export interface SupportTicket {
   createdByName?: string;
   createdAt: string;
   updatedAt?: string;
+  messages?: unknown[];
 }
 
 export interface SupportListResponse {
@@ -30,15 +31,16 @@ export interface SupportListResponse {
   data: SupportTicket[];
 }
 
-export type TicketType = 'support_request' | 'complaint';
+export type TicketType = 'support' | 'complaint';
 export type Priority = 'low' | 'medium' | 'high';
 
 export interface CreateTicketPayload {
-  ticketType: TicketType;
+  type: TicketType;
   category: string;
   priority: Priority;
   title: string;
   description: string;
+  targetRole: string;
 }
 
 export interface CreateTicketResponse {
@@ -47,9 +49,19 @@ export interface CreateTicketResponse {
   data?: SupportTicket;
 }
 
+export interface SupportTicketDetailResponse {
+  status?: string;
+  message?: string;
+  data: SupportTicket;
+}
+
 class SupportService {
   async getSupportTickets(): Promise<SupportListResponse> {
     return apiService.get<SupportListResponse>('/support');
+  }
+
+  async getSupportTicket(id: string): Promise<SupportTicketDetailResponse> {
+    return apiService.get<SupportTicketDetailResponse>(`/support/${id}`);
   }
 
   async createTicket(payload: CreateTicketPayload): Promise<CreateTicketResponse> {

@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
+  TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
@@ -11,84 +12,180 @@ import { Colors } from '@/constants/Colors';
 import { notificationService } from '@/services/notification.service';
 import type { NotificationItem } from '@/types/notification';
 import { Ionicons } from '@expo/vector-icons';
+import { Typography } from '@/constants/typography';
+
+type TabKey = 'all' | 'unread' | 'archive';
+
+function getRelativeTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const now = Date.now();
+    const diffMs = now - d.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins} min ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  } catch {
+    return '';
+  }
+}
+
+function formatSourceDate(item: NotificationItem): string {
+  try {
+    const d = new Date(item.createdAt);
+    if (Number.isNaN(d.getTime())) return item.createdByRole || 'SYSTEM';
+    const source =
+      item.createdByRole === 'ganimi_admin'
+        ? 'GANIMI SUPPORT'
+        : (item as any).createdByName
+          ? String((item as any).createdByName).toUpperCase()
+          : (item.createdByRole || 'SYSTEM').toUpperCase();
+    const date = d.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    const time = d.toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    return `${source} • ${date} • ${time}`;
+  } catch {
+    return item.createdByRole || 'SYSTEM';
+  }
+}
+
+type NotificationStyle = {
+  barColor: string;
+  iconBg: string;
+  pillBg: string;
+  pillText: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+};
+
+function getStyleForType(type: string): NotificationStyle {
+  const t = (type || 'info').toLowerCase();
+  if (t === 'alert')
+    return {
+      barColor: '#F59E0B',
+      iconBg: '#F59E0B',
+      pillBg: '#FEF3C7',
+      pillText: '#B45309',
+      icon: 'warning',
+      label: 'ALERT',
+    };
+  if (t === 'event' || t === 'success')
+    return {
+      barColor: '#22C55E',
+      iconBg: '#22C55E',
+      pillBg: '#DCFCE7',
+      pillText: '#16A34A',
+      icon: 'checkmark-circle',
+      label: 'SUCCESS',
+    };
+  if (t === 'urgent')
+    return {
+      barColor: '#EF4444',
+      iconBg: '#EF4444',
+      pillBg: '#FEE2E2',
+      pillText: '#DC2626',
+      icon: 'notifications',
+      label: 'URGENT',
+    };
+  return {
+    barColor: '#2563EB',
+    iconBg: '#2563EB',
+    pillBg: '#DBEAFE',
+    pillText: '#1D4ED8',
+    icon: 'school',
+    label: 'INFO',
+  };
+}
 
 export default function StudentNotificationsScreen() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabKey>('all');
 
-  useEffect(() => {
-    loadNotifications();
-  }, []);
-
-  const loadNotifications = async () => {
+  const loadNotifications = useCallback(async (isRefresh?: boolean) => {
     try {
       setError(null);
-      if (!isRefreshing) setIsLoading(true);
+      if (!isRefresh) setIsLoading(true);
       const res = await notificationService.getMyNotifications();
-      setNotifications(res.data || []);
+      const data = (res as any).data ?? res?.data ?? [];
+      setNotifications(Array.isArray(data) ? data : []);
     } catch (e: any) {
       console.error('Failed to load notifications', e);
       setError(e?.message || 'Unable to load notifications. Please try again.');
     } finally {
       setIsLoading(false);
-      setIsRefreshing(false);
+      if (isRefresh) setIsRefreshing(false);
     }
-  };
+  }, []);
+
+  React.useEffect(() => {
+    loadNotifications();
+  }, [loadNotifications]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    loadNotifications();
+    loadNotifications(true);
   };
 
-  const totalNotifications = notifications.length;
-  const announcementCount = notifications.filter((n) => n.type === 'announcement').length;
-  const adminCount = notifications.filter((n) => n.createdByRole === 'ganimi_admin').length;
-  const last7DaysCount = notifications.filter((n) => {
-    const created = new Date(n.createdAt);
-    if (isNaN(created.getTime())) return false;
-    const diffMs = Date.now() - created.getTime();
-    return diffMs <= 7 * 24 * 60 * 60 * 1000;
-  }).length;
+  const filteredList = useMemo(() => {
+    let list = notifications;
+    if (activeTab === 'archive') list = []; // No archived list from API yet
+    // Latest first
+    return [...list].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }, [activeTab, notifications]);
 
-  const renderNotificationCard = ({ item }: { item: NotificationItem }) => {
-    const created = new Date(item.createdAt);
-    const createdLabel = isNaN(created.getTime())
-      ? ''
-      : created.toLocaleString();
+  const renderCard = ({ item }: { item: NotificationItem }) => {
+    const style = getStyleForType(item.type);
+    const relativeTime = getRelativeTime(item.createdAt);
+    const sourceLine = formatSourceDate(item);
+    const isUnread = true; // Could use item.read when API supports it
 
     return (
       <View style={styles.card}>
-        <View style={styles.cardHeaderRow}>
-          <View style={styles.cardTitleCol}>
+        <View style={[styles.leftBar, { backgroundColor: style.barColor }]} />
+        <View style={styles.cardInner}>
+          <View style={[styles.iconCircle, { backgroundColor: style.pillBg }]}>
+            <Ionicons name={style.icon} size={20} color={style.barColor} />
+          </View>
+          <View style={styles.cardContent}>
+            <View style={styles.cardTopRow}>
+              <View style={[styles.pill, { backgroundColor: style.pillBg }]}>
+                <Text style={[styles.pillText, { color: style.pillText }]}>
+                  {style.label}
+                </Text>
+              </View>
+              <View style={styles.timeRow}>
+                {isUnread ? <View style={styles.unreadDot} /> : null}
+                <Text style={styles.relativeTime}>{relativeTime}</Text>
+              </View>
+            </View>
             <Text style={styles.cardTitle} numberOfLines={1}>
               {item.title}
             </Text>
-            <Text style={styles.cardSubtitle} numberOfLines={2}>
+            <Text style={styles.cardMessage} numberOfLines={2}>
               {item.message}
             </Text>
-          </View>
-          <View style={styles.typePill}>
-            <Text style={styles.typePillText}>
-              {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
+            <Text style={styles.sourceLine} numberOfLines={1}>
+              {sourceLine}
             </Text>
           </View>
         </View>
-
-        <View style={styles.infoRow}>
-          <Ionicons name="person-outline" size={14} color={Colors.textSecondary} />
-          <Text style={styles.infoText} numberOfLines={1}>
-            From: {item.createdByRole === 'ganimi_admin' ? 'Ganimi Team' : item.createdByRole}
-          </Text>
-        </View>
-
-        {createdLabel ? (
-          <View style={styles.infoRow}>
-            <Ionicons name="time-outline" size={14} color={Colors.textSecondary} />
-            <Text style={styles.infoText}>{createdLabel}</Text>
-          </View>
-        ) : null}
       </View>
     );
   };
@@ -104,44 +201,41 @@ export default function StudentNotificationsScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <Text style={styles.title}>Notifications</Text>
-        <Text style={styles.subtitle}>
-          Stay up to date with class updates and announcements.
-        </Text>
-      </View>
-
-      {/* Overview tiles */}
-      <View style={styles.overviewRow}>
-        <View style={[styles.overviewCard, styles.overviewTotal]}>
-          <Text style={styles.overviewLabel}>Total</Text>
-          <Text style={styles.overviewValue}>{totalNotifications}</Text>
-        </View>
-        <View style={[styles.overviewCard, styles.overviewAnnouncements]}>
-          <Text style={styles.overviewLabel}>Announcements</Text>
-          <Text style={styles.overviewValue}>{announcementCount}</Text>
-        </View>
-      </View>
-      <View style={styles.overviewRow}>
-        <View style={[styles.overviewCard, styles.overviewAdmin]}>
-          <Text style={styles.overviewLabel}>From Ganimi</Text>
-          <Text style={styles.overviewValue}>{adminCount}</Text>
-        </View>
-        <View style={[styles.overviewCard, styles.overviewRecent]}>
-          <Text style={styles.overviewLabel}>Last 7 Days</Text>
-          <Text style={styles.overviewValue}>{last7DaysCount}</Text>
-        </View>
+      <View style={styles.tabsRow}>
+        {(['all', 'unread', 'archive'] as const).map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={styles.tabItem}
+            onPress={() => setActiveTab(tab)}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[
+                styles.tabLabel,
+                activeTab === tab && styles.tabLabelActive,
+              ]}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </Text>
+            {activeTab === tab && <View style={styles.tabUnderline} />}
+          </TouchableOpacity>
+        ))}
       </View>
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
       <FlatList
-        data={notifications}
+        data={filteredList}
         keyExtractor={(item) => item.id}
-        renderItem={renderNotificationCard}
+        renderItem={renderCard}
         contentContainerStyle={styles.listContent}
         refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            colors={[Colors.primary]}
+            tintColor={Colors.primary}
+          />
         }
         ListEmptyComponent={
           !isLoading && !error ? (
@@ -174,120 +268,123 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.textSecondary,
   },
-  headerRow: {
+  tabsRow: {
+    flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingTop: 24,
-    paddingBottom: 8,
+    paddingTop: 20,
+    paddingBottom: 12,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: Colors.text,
-    marginBottom: 8,
+  tabItem: {
+    marginRight: 24,
   },
-  subtitle: {
+  tabLabel: {
     fontSize: 14,
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.semiBold,
   },
-  overviewRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    marginTop: 8,
+  tabLabelActive: {
+    color: Colors.primary,
   },
-  overviewCard: {
-    flex: 1,
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    marginHorizontal: 4,
-  },
-  overviewTotal: {
-    backgroundColor: '#DBEAFE',
-  },
-  overviewAnnouncements: {
-    backgroundColor: '#DCFCE7',
-  },
-  overviewAdmin: {
-    backgroundColor: '#FEF3C7',
-  },
-  overviewRecent: {
-    backgroundColor: '#FFEDD5',
-  },
-  overviewLabel: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginBottom: 4,
-  },
-  overviewValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.text,
+  tabUnderline: {
+    marginTop: 4,
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: Colors.primary,
   },
   errorText: {
     paddingHorizontal: 16,
-    marginTop: 8,
+    marginBottom: 8,
     fontSize: 13,
     color: Colors.error,
   },
   listContent: {
     paddingHorizontal: 16,
-    paddingTop: 12,
     paddingBottom: 24,
   },
   card: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
-  },
-  cardHeaderRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+    backgroundColor: '#FFF',
+    borderRadius: 14,
+    marginBottom: 12,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  cardTitleCol: {
+  leftBar: {
+    width: 4,
+    alignSelf: 'stretch',
+  },
+  cardInner: {
     flex: 1,
-    marginRight: 12,
+    flexDirection: 'row',
+    padding: 14,
+    minWidth: 0,
+    gap: 12,
+  },
+  cardContent: {
+    flex: 1,
+  },
+  cardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  iconCircle: {
+    width:40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+  },
+  pillText: {
+    fontSize: 10,
+    letterSpacing: 0.5,
+    fontFamily: Typography.fontFamily.extraBold,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 'auto',
+    gap: 4,
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.primary,
+  },
+  relativeTime: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
   },
   cardTitle: {
     fontSize: 16,
-    fontWeight: '700',
     color: Colors.text,
-  },
-  cardSubtitle: {
+    fontFamily: Typography.fontFamily.extraBold,
     marginTop: 4,
-    fontSize: 13,
-    color: Colors.textSecondary,
   },
-  typePill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: '#ECFEFF',
-  },
-  typePillText: {
+  cardMessage: {
     fontSize: 12,
-    fontWeight: '600',
-    color: Colors.primary,
-    textTransform: 'capitalize',
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 2,
-  },
-  infoText: {
-    fontSize: 13,
+    lineHeight: 18,
     color: Colors.textSecondary,
-    flex: 1,
+    fontFamily: Typography.fontFamily.medium,
+    marginBottom: 6,
+  },
+  sourceLine: {
+    fontSize: 11,
+    color: Colors.textLight,
+    fontFamily: Typography.fontFamily.bold,
   },
   emptyState: {
     padding: 24,
@@ -298,11 +395,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.text,
     marginBottom: 4,
+    fontFamily: Typography.fontFamily.extraBold,
   },
   emptySubtitle: {
     fontSize: 14,
     color: Colors.textSecondary,
     textAlign: 'center',
+    fontFamily: Typography.fontFamily.regular,
   },
 });
-
