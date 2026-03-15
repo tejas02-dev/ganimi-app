@@ -9,10 +9,12 @@ import {
   TextInput,
   ActivityIndicator,
   Image,
+  RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { Colors } from '@/constants/Colors';
+import { Typography } from '@/constants/typography';
 import { Ionicons } from '@expo/vector-icons';
 import { authService } from '@/services/auth.service';
 import type { VendorProfile, VendorOnboardingStatus, Gender, Branch } from '@/types/auth';
@@ -30,6 +32,7 @@ export default function VendorProfileScreen() {
   const [onboarding, setOnboarding] = useState<VendorOnboardingStatus | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -123,8 +126,9 @@ export default function VendorProfileScreen() {
     }
   };
 
-  const loadData = async () => {
-    setIsLoading(true);
+  const loadData = async (isRefresh = false) => {
+    if (!isRefresh) setIsLoading(true);
+    else setIsRefreshing(true);
     setError(null);
     try {
       const [profileRes, onboardingRes] = await Promise.all([
@@ -152,7 +156,8 @@ export default function VendorProfileScreen() {
       setError(e?.message || 'Unable to load profile. Please try again.');
       setShowOnboarding(true);
     } finally {
-      setIsLoading(false);
+      if (!isRefresh) setIsLoading(false);
+      else setIsRefreshing(false);
     }
   };
 
@@ -478,15 +483,32 @@ export default function VendorProfileScreen() {
     );
   }
 
+  const completionSteps = [
+    { key: 'photo', label: 'Add Profile Photo', done: !!(localPhotoUri || profile?.profilePicture) },
+    { key: 'personal', label: 'Personal Details', done: !!(fullName && phone) },
+    { key: 'institution', label: 'Institution Details', done: !!(institutionName || branches?.length) },
+    { key: 'bank', label: 'Bank Details', done: !!(bankName && bankAccountNumber) },
+  ] as const;
+  const completedCount = completionSteps.filter((s) => s.done).length;
+  const completionPercent = Math.round((completedCount / completionSteps.length) * 100);
+
   return (
     <View style={styles.container}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => loadData(true)}
+              colors={[Colors.primary]}
+              tintColor={Colors.primary}
+            />
+          }
         >
-          {/* Header card with profile image and status */}
+          {/* Header card with profile image and actions */}
           <View style={styles.headerCard}>
-            <View style={styles.avatarContainer}>
+            <View style={styles.avatarWrapper}>
               {localPhotoUri || profile?.profilePicture ? (
                 <Image
                   source={{ uri: localPhotoUri || (profile?.profilePicture as string) }}
@@ -502,20 +524,17 @@ export default function VendorProfileScreen() {
             </View>
 
             <View style={styles.headerTextCol}>
-              <Text style={styles.name} numberOfLines={1}>
-                {profile?.name ?? user?.name}
+              <Text style={styles.headerName} numberOfLines={1}>
+                {profile?.name ?? user?.name ?? 'Vendor'}
               </Text>
-              <Text style={styles.email} numberOfLines={1}>
+              <Text style={styles.headerEmail} numberOfLines={1}>
                 {profile?.email ?? user?.email}
               </Text>
-              <View style={styles.roleBadge}>
-                <Text style={styles.roleText}>{user?.role}</Text>
-              </View>
             </View>
 
             <View style={styles.photoActions}>
               <TouchableOpacity style={styles.uploadButton} onPress={handlePickPhoto}>
-                <Ionicons name="attach-outline" size={16} color={Colors.text} />
+                <Ionicons name="attach-outline" size={20} color={Colors.text} style={styles.uploadButtonIcon} />
                 <Text style={styles.uploadButtonText}>Upload New Photo</Text>
               </TouchableOpacity>
 
@@ -530,6 +549,10 @@ export default function VendorProfileScreen() {
                   <Text style={styles.savePhotoButtonText}>Save Photo</Text>
                 )}
               </TouchableOpacity>
+
+              <Text style={styles.photoHelperText}>
+                At least 800×800 px recommended. JPG, PNG, or GIF max 1MB.
+              </Text>
             </View>
 
             <View style={styles.statusRow}>
@@ -544,51 +567,88 @@ export default function VendorProfileScreen() {
             </View>
           </View>
 
+          {/* Completion card */}
+          <View style={styles.completionCard}>
+            <Text style={styles.completionTitle}>Complete Your Profile</Text>
+            <View style={styles.completionRow}>
+              <View style={styles.progressCircleOuter}>
+                <View style={styles.progressCircleInner}>
+                  <Text style={styles.progressText}>{completionPercent}%</Text>
+                </View>
+              </View>
+              <View style={styles.completionList}>
+                {completionSteps.map((step) => (
+                  <View key={step.key} style={styles.completionItem}>
+                    <Ionicons
+                      name={step.done ? 'checkmark-circle' : 'close-circle'}
+                      size={16}
+                      color={step.done ? Colors.primary : Colors.textSecondary}
+                    />
+                    <Text
+                      style={[
+                        styles.completionText,
+                        step.done ? styles.completionTextDone : styles.completionTextPending,
+                      ]}
+                    >
+                      {step.label}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </View>
+
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-          {/* Personal information */}
-          <View style={styles.formCard}>
-        <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleSection('personal')}>
-          <Text style={styles.sectionTitle}>Personal information</Text>
-          <Ionicons
-            name={expandedSection === 'personal' ? 'chevron-up-outline' : 'chevron-down-outline'}
-            size={20}
-            color={Colors.textSecondary}
-          />
-        </TouchableOpacity>
+          {/* Personal Details */}
+          <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.cardHeaderRow}
+              activeOpacity={0.8}
+              onPress={() => toggleSection('personal')}
+            >
+              <View style={styles.cardHeaderContent}>
+                <View style={styles.cardIconPill}>
+                  <Ionicons name="person-outline" size={18} color={Colors.primary} />
+                </View>
+                <Text style={styles.cardTitle}>Personal Details</Text>
+              </View>
+              <Ionicons
+                name={expandedSection === 'personal' ? 'chevron-up-outline' : 'chevron-down-outline'}
+                size={18}
+                color={Colors.textSecondary}
+              />
+            </TouchableOpacity>
 
-        {expandedSection === 'personal' && (
-          <View style={styles.sectionBody}>
-            {/* Full Name (read-only) */}
+            {expandedSection === 'personal' && (
+              <>
+                <View style={styles.spacer} />
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Full name</Text>
+              <Text style={styles.fieldLabel}>Full Name</Text>
               <TextInput
-                style={[styles.input, styles.inputDisabled]}
+                style={styles.input}
                 value={fullName}
-                editable={false}
-                placeholder="Full name"
+                onChangeText={setFullName}
+                placeholder="Full Name"
+                placeholderTextColor={Colors.textSecondary}
               />
             </View>
 
-            {/* Email (read-only) */}
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>Email</Text>
-              <TextInput
-                style={[styles.input, styles.inputDisabled]}
-                value={email}
-                editable={false}
-                placeholder="Email"
-              />
+              <View style={[styles.input, styles.readonlyInput]}>
+                <Text style={styles.readonlyText}>{email || user?.email}</Text>
+              </View>
             </View>
 
-            {/* Phone */}
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>Phone</Text>
               <TextInput
                 style={styles.input}
                 value={phone}
                 onChangeText={setPhone}
-                placeholder="Phone number"
+                placeholder="+91 98000 98000"
+                placeholderTextColor={Colors.textSecondary}
                 keyboardType="phone-pad"
               />
             </View>
@@ -619,7 +679,6 @@ export default function VendorProfileScreen() {
               </View>
             </View>
 
-            {/* Address */}
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>Address</Text>
               <TextInput
@@ -627,11 +686,11 @@ export default function VendorProfileScreen() {
                 value={address}
                 onChangeText={setAddress}
                 placeholder="Address"
+                placeholderTextColor={Colors.textSecondary}
                 multiline
               />
             </View>
 
-            {/* Pincode & DOB */}
             <View style={styles.row}>
               <View style={styles.rowItem}>
                 <Text style={styles.fieldLabel}>Pincode</Text>
@@ -639,22 +698,23 @@ export default function VendorProfileScreen() {
                   style={styles.input}
                   value={pincode}
                   onChangeText={setPincode}
-                  placeholder="Pincode"
+                  placeholder="123456"
+                  placeholderTextColor={Colors.textSecondary}
                   keyboardType="number-pad"
                 />
               </View>
               <View style={styles.rowItem}>
-                <Text style={styles.fieldLabel}>Date of birth</Text>
+                <Text style={styles.fieldLabel}>Date of Birth</Text>
                 <TextInput
                   style={styles.input}
                   value={dateOfBirth}
                   onChangeText={setDateOfBirth}
                   placeholder="YYYY-MM-DD"
+                  placeholderTextColor={Colors.textSecondary}
                 />
               </View>
             </View>
 
-            {/* Qualification & Experience */}
             <View style={styles.row}>
               <View style={styles.rowItem}>
                 <Text style={styles.fieldLabel}>Qualification</Text>
@@ -663,6 +723,7 @@ export default function VendorProfileScreen() {
                   value={qualification}
                   onChangeText={setQualification}
                   placeholder="e.g. M.Ed"
+                  placeholderTextColor={Colors.textSecondary}
                 />
               </View>
               <View style={styles.rowItem}>
@@ -672,35 +733,36 @@ export default function VendorProfileScreen() {
                   value={experience}
                   onChangeText={setExperience}
                   placeholder="e.g. 5 years"
+                  placeholderTextColor={Colors.textSecondary}
                 />
               </View>
             </View>
 
-            {/* Aadhar & PAN */}
             <View style={styles.row}>
               <View style={styles.rowItem}>
-                <Text style={styles.fieldLabel}>Aadhar number</Text>
+                <Text style={styles.fieldLabel}>Aadhar Number</Text>
                 <TextInput
                   style={styles.input}
                   value={aadharNumber}
                   onChangeText={setAadharNumber}
                   placeholder="XXXX-XXXX-XXXX"
+                  placeholderTextColor={Colors.textSecondary}
                   keyboardType="number-pad"
                 />
               </View>
               <View style={styles.rowItem}>
-                <Text style={styles.fieldLabel}>PAN number</Text>
+                <Text style={styles.fieldLabel}>PAN Number</Text>
                 <TextInput
                   style={styles.input}
                   value={panNumber}
                   onChangeText={setPanNumber}
                   placeholder="ABCDE1234F"
+                  placeholderTextColor={Colors.textSecondary}
                   autoCapitalize="characters"
                 />
               </View>
             </View>
 
-            {/* Achievements */}
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>Achievements</Text>
               <TextInput
@@ -708,11 +770,11 @@ export default function VendorProfileScreen() {
                 value={achievements}
                 onChangeText={setAchievements}
                 placeholder="Awards, recognition, key milestones…"
+                placeholderTextColor={Colors.textSecondary}
                 multiline
               />
             </View>
 
-            {/* Save Button */}
             <TouchableOpacity
               style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
               onPress={handleSave}
@@ -721,54 +783,67 @@ export default function VendorProfileScreen() {
               {isSaving ? (
                 <ActivityIndicator color="#FFF" />
               ) : (
-                <Text style={styles.saveButtonText}>Save changes</Text>
+                <Text style={styles.saveButtonText}>Save Changes</Text>
               )}
             </TouchableOpacity>
+              </>
+            )}
           </View>
-        )}
-      </View>
 
-          {/* Institution details */}
-          <View style={[styles.formCard, styles.institutionCard]}>
-        <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleSection('institution')}>
-          <Text style={styles.sectionTitle}>Institution details</Text>
-          <Ionicons
-            name={expandedSection === 'institution' ? 'chevron-up-outline' : 'chevron-down-outline'}
-            size={20}
-            color={Colors.textSecondary}
-          />
-        </TouchableOpacity>
+          {/* Institution Details */}
+          <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.cardHeaderRow}
+              activeOpacity={0.8}
+              onPress={() => toggleSection('institution')}
+            >
+              <View style={styles.cardHeaderContent}>
+                <View style={styles.cardIconPill}>
+                  <Ionicons name="business-outline" size={18} color={Colors.primary} />
+                </View>
+                <Text style={styles.cardTitle}>Institution Details</Text>
+              </View>
+              <Ionicons
+                name={expandedSection === 'institution' ? 'chevron-up-outline' : 'chevron-down-outline'}
+                size={18}
+                color={Colors.textSecondary}
+              />
+            </TouchableOpacity>
 
-        {expandedSection === 'institution' && (
-          <View style={styles.sectionBody}>
+            {expandedSection === 'institution' && (
+              <>
+                <View style={styles.spacer} />
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Institution name</Text>
+              <Text style={styles.fieldLabel}>Institution Name</Text>
               <TextInput
                 style={styles.input}
                 value={institutionName}
                 onChangeText={setInstitutionName}
                 placeholder="Your institute / academy name"
+                placeholderTextColor={Colors.textSecondary}
               />
             </View>
 
             <View style={styles.row}>
               <View style={styles.rowItem}>
-                <Text style={styles.fieldLabel}>Institution phone</Text>
+                <Text style={styles.fieldLabel}>Institution Phone</Text>
                 <TextInput
                   style={styles.input}
                   value={institutionPhone}
                   onChangeText={setInstitutionPhone}
-                  placeholder="Contact phone"
+                  placeholder="+91 98000 98000"
+                  placeholderTextColor={Colors.textSecondary}
                   keyboardType="phone-pad"
                 />
               </View>
               <View style={styles.rowItem}>
-                <Text style={styles.fieldLabel}>Institution email</Text>
+                <Text style={styles.fieldLabel}>Institution Email</Text>
                 <TextInput
                   style={styles.input}
                   value={institutionEmail}
                   onChangeText={setInstitutionEmail}
                   placeholder="Contact email"
+                  placeholderTextColor={Colors.textSecondary}
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
@@ -798,31 +873,34 @@ export default function VendorProfileScreen() {
                   </View>
 
                   <View style={styles.fieldGroup}>
-                    <Text style={styles.fieldLabel}>Branch name</Text>
+                    <Text style={styles.fieldLabel}>Branch Name</Text>
                     <TextInput
                       style={styles.input}
                       value={branch.branchName}
                       onChangeText={(text) => updateBranchField(index, 'branchName', text)}
                       placeholder="e.g. Main branch"
+                      placeholderTextColor={Colors.textSecondary}
                     />
                   </View>
                   <View style={styles.fieldGroup}>
-                    <Text style={styles.fieldLabel}>Branch address</Text>
+                    <Text style={styles.fieldLabel}>Branch Address</Text>
                     <TextInput
                       style={[styles.input, styles.multilineInput]}
                       value={branch.branchAddress}
                       onChangeText={(text) => updateBranchField(index, 'branchAddress', text)}
                       placeholder="Address"
+                      placeholderTextColor={Colors.textSecondary}
                       multiline
                     />
                   </View>
                   <View style={styles.fieldGroup}>
-                    <Text style={styles.fieldLabel}>Branch pincode</Text>
+                    <Text style={styles.fieldLabel}>Branch Pincode</Text>
                     <TextInput
                       style={styles.input}
                       value={branch.branchPincode}
                       onChangeText={(text) => updateBranchField(index, 'branchPincode', text)}
-                      placeholder="Pincode"
+                      placeholder="123456"
+                      placeholderTextColor={Colors.textSecondary}
                       keyboardType="number-pad"
                     />
                   </View>
@@ -838,64 +916,78 @@ export default function VendorProfileScreen() {
               {isSavingInstitution ? (
                 <ActivityIndicator color="#FFF" />
               ) : (
-                <Text style={styles.saveButtonText}>Save institution details</Text>
+                <Text style={styles.saveButtonText}>Save Changes</Text>
               )}
             </TouchableOpacity>
+              </>
+            )}
           </View>
-        )}
-      </View>
 
-          {/* Bank details */}
-          <View style={[styles.formCard, styles.bankCard]}>
-        <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleSection('bank')}>
-          <Text style={styles.sectionTitle}>Bank details</Text>
-          <Ionicons
-            name={expandedSection === 'bank' ? 'chevron-up-outline' : 'chevron-down-outline'}
-            size={20}
-            color={Colors.textSecondary}
-          />
-        </TouchableOpacity>
+          {/* Bank Details */}
+          <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.cardHeaderRow}
+              activeOpacity={0.8}
+              onPress={() => toggleSection('bank')}
+            >
+              <View style={styles.cardHeaderContent}>
+                <View style={styles.cardIconPill}>
+                  <Ionicons name="card-outline" size={18} color={Colors.primary} />
+                </View>
+                <Text style={styles.cardTitle}>Bank Details</Text>
+              </View>
+              <Ionicons
+                name={expandedSection === 'bank' ? 'chevron-up-outline' : 'chevron-down-outline'}
+                size={18}
+                color={Colors.textSecondary}
+              />
+            </TouchableOpacity>
 
-        {expandedSection === 'bank' && (
-          <View style={styles.sectionBody}>
+            {expandedSection === 'bank' && (
+              <>
+                <View style={styles.spacer} />
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Bank name</Text>
+              <Text style={styles.fieldLabel}>Bank Name</Text>
               <TextInput
                 style={styles.input}
                 value={bankName}
                 onChangeText={setBankName}
                 placeholder="Bank name"
+                placeholderTextColor={Colors.textSecondary}
               />
             </View>
 
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Account holder name</Text>
+              <Text style={styles.fieldLabel}>Account Holder Name</Text>
               <TextInput
                 style={styles.input}
                 value={bankAccountHolderName}
                 onChangeText={setBankAccountHolderName}
                 placeholder="Account holder name"
+                placeholderTextColor={Colors.textSecondary}
               />
             </View>
 
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Account number</Text>
+              <Text style={styles.fieldLabel}>Account Number</Text>
               <TextInput
                 style={styles.input}
                 value={bankAccountNumber}
                 onChangeText={setBankAccountNumber}
                 placeholder="Account number"
+                placeholderTextColor={Colors.textSecondary}
                 keyboardType="number-pad"
               />
             </View>
 
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>IFSC code</Text>
+              <Text style={styles.fieldLabel}>IFSC Code</Text>
               <TextInput
                 style={styles.input}
                 value={bankIfscCode}
                 onChangeText={setBankIfscCode}
                 placeholder="SBIN0001234"
+                placeholderTextColor={Colors.textSecondary}
                 autoCapitalize="characters"
               />
             </View>
@@ -908,44 +1000,56 @@ export default function VendorProfileScreen() {
               {isSavingBank ? (
                 <ActivityIndicator color="#FFF" />
               ) : (
-                <Text style={styles.saveButtonText}>Save bank details</Text>
+                <Text style={styles.saveButtonText}>Save Changes</Text>
               )}
             </TouchableOpacity>
+              </>
+            )}
           </View>
-        )}
-      </View>
 
-      {/* Change password */}
-      <View style={[styles.formCard, styles.bankCard]}>
-        <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleSection('password')}>
-          <Text style={styles.sectionTitle}>Change password</Text>
-          <Ionicons
-            name={expandedSection === 'password' ? 'chevron-up-outline' : 'chevron-down-outline'}
-            size={20}
-            color={Colors.textSecondary}
-          />
-        </TouchableOpacity>
+          {/* Security */}
+          <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.cardHeaderRow}
+              activeOpacity={0.8}
+              onPress={() => toggleSection('password')}
+            >
+              <View style={styles.cardHeaderContent}>
+                <View style={styles.cardIconPill}>
+                  <Ionicons name="lock-closed-outline" size={18} color={Colors.primary} />
+                </View>
+                <Text style={styles.cardTitle}>Security</Text>
+              </View>
+              <Ionicons
+                name={expandedSection === 'password' ? 'chevron-up-outline' : 'chevron-down-outline'}
+                size={18}
+                color={Colors.textSecondary}
+              />
+            </TouchableOpacity>
 
-        {expandedSection === 'password' && (
-          <View style={styles.sectionBody}>
+            {expandedSection === 'password' && (
+              <>
+                <View style={styles.spacer} />
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Old password</Text>
+              <Text style={styles.fieldLabel}>Old Password</Text>
               <TextInput
                 style={styles.input}
                 value={oldPassword}
                 onChangeText={setOldPassword}
-                placeholder="Old password"
+                placeholder="Old Password"
+                placeholderTextColor={Colors.textSecondary}
                 secureTextEntry
               />
             </View>
 
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>New password</Text>
+              <Text style={styles.fieldLabel}>New Password</Text>
               <TextInput
                 style={styles.input}
                 value={newPassword}
                 onChangeText={setNewPassword}
-                placeholder="New password"
+                placeholder="New Password"
+                placeholderTextColor={Colors.textSecondary}
                 secureTextEntry
               />
             </View>
@@ -958,20 +1062,17 @@ export default function VendorProfileScreen() {
               {isSavingPassword ? (
                 <ActivityIndicator color="#FFF" />
               ) : (
-                <Text style={styles.saveButtonText}>Save changes</Text>
+                <Text style={styles.saveButtonText}>Save Changes</Text>
               )}
             </TouchableOpacity>
+              </>
+            )}
           </View>
-        )}
-      </View>
 
-          {/* Logout */}
-          <View style={styles.footerActions}>
-            <TouchableOpacity style={styles.footerButton} onPress={handleLogout}>
-              <Ionicons name="log-out-outline" size={20} color={Colors.error} />
-              <Text style={styles.footerButtonText}>Logout</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={20} color={Colors.error} />
+            <Text style={styles.logoutButtonText}>Logout</Text>
+          </TouchableOpacity>
         </ScrollView>
     </View>
   );
@@ -983,7 +1084,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   scrollContent: {
-    padding: 16,
     paddingBottom: 32,
   },
   centerContainer: {
@@ -991,28 +1091,40 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
+  },
+  errorText: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.error,
+    marginBottom: 8,
+    marginHorizontal: 16,
+  },
   headerCard: {
     backgroundColor: '#FFF',
-    borderRadius: 20,
     padding: 20,
     marginBottom: 16,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.04,
     shadowRadius: 8,
-    elevation: 2,
+    elevation: 1,
   },
-  avatarContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  avatarWrapper: {
+    width: 80,
+    height: 80,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 40,
+    overflow: 'hidden',
     backgroundColor: Colors.backgroundSecondary,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTextCol: {
-    alignItems: 'center',
   },
   avatarImage: {
     width: '100%',
@@ -1026,32 +1138,68 @@ const styles = StyleSheet.create({
   },
   avatarFallbackText: {
     fontSize: 20,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
-  name: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
-    marginBottom: 4,
   },
-  email: {
-    fontSize: 14,
+  headerTextCol: {
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  headerName: {
+    fontSize: 18,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.text,
+    marginBottom: 2,
+  },
+  headerEmail: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.textSecondary,
-    marginBottom: 12,
   },
-  roleBadge: {
-    backgroundColor: Colors.primary,
+  photoActions: {
+    marginTop: 12,
+    width: '100%',
+    alignItems: 'stretch',
+  },
+  uploadButtonIcon: {},
+  uploadButton: {
+    width: '50%',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    paddingVertical: 8,
     paddingHorizontal: 16,
-    paddingVertical: 6,
     borderRadius: 16,
-    marginTop: 4,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.backgroundSecondary,
+    marginBottom: 8,
+    gap: 6,
   },
-  roleText: {
+  uploadButtonText: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.medium,
+    color: Colors.text,
+  },
+  savePhotoButton: {
+    width: '50%',
+    alignSelf: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.primary,
+    marginBottom: 6,
+  },
+  savePhotoButtonText: {
+    textAlign: 'center',
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.medium,
     color: '#FFF',
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'capitalize',
+  },
+  photoHelperText: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
+    textAlign: 'center',
   },
   statusRow: {
     marginTop: 12,
@@ -1068,107 +1216,137 @@ const styles = StyleSheet.create({
   statusText: {
     marginLeft: 6,
     fontSize: 12,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.medium,
   },
-  loadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  loadingText: {
-    marginLeft: 8,
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
-  errorText: {
-    fontSize: 13,
-    color: Colors.error,
-    marginBottom: 8,
-  },
-  formCard: {
+  completionCard: {
     backgroundColor: '#FFF',
     borderRadius: 16,
     padding: 16,
+    marginHorizontal: 16,
     marginBottom: 16,
+    flexDirection: 'column',
+    gap: 12,
+  },
+  completionTitle: {
+    fontSize: 16,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.text,
+    textAlign: 'left',
+  },
+  completionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  progressCircleOuter: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 6,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  progressCircleInner: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#ECFEFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 4,
+    borderColor: Colors.primary,
+  },
+  progressText: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.primary,
+  },
+  completionList: {
+    flex: 1,
+    gap: 4,
+  },
+  completionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  completionText: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.medium,
+  },
+  completionTextDone: {
+    color: Colors.text,
+    fontFamily: Typography.fontFamily.medium,
+  },
+  completionTextPending: {
+    color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.medium,
+  },
+  card: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.04,
     shadowRadius: 8,
     elevation: 1,
   },
-  institutionCard: {
-  },
-  bankCard: {
-  },
-  photoActions: {
-    marginTop: 12,
-    width: '100%',
-    alignItems: 'center',
-    gap: 8,
-  },
-  uploadButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: '#F9FAFB',
-    gap: 6,
-  },
-  uploadButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.text,
-  },
-  savePhotoButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 32,
-    borderRadius: 999,
-    backgroundColor: Colors.primary,
-  },
-  savePhotoButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFF',
-  },
-  sectionTitle: {
+  cardTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
   },
-  sectionHeader: {
+  cardHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 4,
   },
-  sectionBody: {
-    marginTop: 8,
+  cardHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  cardIconPill: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  spacer: {
+    marginBottom: 8,
   },
   fieldGroup: {
     marginBottom: 12,
   },
   fieldLabel: {
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.text,
     marginBottom: 6,
   },
   input: {
-    borderRadius: 10,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.border,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
     color: Colors.text,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.backgroundSecondary,
   },
-  inputDisabled: {
-    backgroundColor: '#F3F4F6',
+  readonlyInput: {
+    justifyContent: 'center',
+  },
+  readonlyText: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
   },
   multilineInput: {
@@ -1201,16 +1379,17 @@ const styles = StyleSheet.create({
   },
   genderChipText: {
     fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
   },
   genderChipTextActive: {
     color: Colors.primary,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
   },
   saveButton: {
     marginTop: 8,
     paddingVertical: 12,
-    borderRadius: 999,
+    borderRadius: 16,
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1221,7 +1400,7 @@ const styles = StyleSheet.create({
   saveButtonText: {
     color: '#FFF',
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.medium,
   },
   branchesHeader: {
     marginTop: 8,
@@ -1232,7 +1411,7 @@ const styles = StyleSheet.create({
   },
   branchesTitle: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.text,
   },
   addBranchButton: {
@@ -1242,11 +1421,12 @@ const styles = StyleSheet.create({
   addBranchText: {
     marginLeft: 4,
     fontSize: 13,
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.primary,
-    fontWeight: '500',
   },
   branchesEmptyText: {
     fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
     marginBottom: 8,
     marginTop: 4,
@@ -1268,7 +1448,7 @@ const styles = StyleSheet.create({
   },
   branchTitle: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.text,
   },
   removeBranchButton: {
@@ -1278,22 +1458,21 @@ const styles = StyleSheet.create({
   removeBranchText: {
     marginLeft: 4,
     fontSize: 12,
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.error,
   },
-  footerActions: {
+  logoutButton: {
     marginTop: 8,
-    alignItems: 'center',
-  },
-  footerButton: {
+    alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
-  footerButtonText: {
+  logoutButtonText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.error,
   },
 });

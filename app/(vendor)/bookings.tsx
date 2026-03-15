@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/Colors';
+import { Typography } from '@/constants/typography';
 import { VendorVerificationGate } from '@/components/VendorVerificationGate';
 import { bookingService, type MyBookingItem } from '@/services/booking.service';
 
@@ -48,6 +49,25 @@ function statusColor(status: string): string {
   if (s === 'cancelled') return Colors.error;
   if (s === 'pending') return Colors.warning;
   return Colors.textSecondary;
+}
+
+function statusBg(status: string): string {
+  const s = (status || '').toLowerCase();
+  if (s === 'confirmed') return '#DCFCE7';
+  if (s === 'completed') return `${Colors.primary}18`;
+  if (s === 'cancelled') return '#FEE2E2';
+  if (s === 'pending') return '#FEF9C3';
+  return Colors.backgroundSecondary;
+}
+
+function getInitials(name?: string | null): string {
+  if (!name) return '?';
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((n) => n[0]?.toUpperCase())
+    .join('');
 }
 
 export default function VendorBookingsScreen() {
@@ -133,55 +153,56 @@ export default function VendorBookingsScreen() {
         <View style={styles.list}>
           {bookings.map((item) => (
             <View key={item.bookingId} style={styles.card}>
-              <View style={styles.cardTop}>
-                <Text style={styles.cardTitle}>Booking details</Text>
-                <View style={[styles.statusPill, { backgroundColor: `${statusColor(item.status)}18` }]}>
+              {/* Student row */}
+              <View style={styles.cardHeader}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{getInitials(item.studentName)}</Text>
+                </View>
+                <View style={styles.studentInfo}>
+                  <Text style={styles.studentName} numberOfLines={1}>
+                    {item.studentName?.trim() || '—'}
+                  </Text>
+                  <View style={styles.ratingRow}>
+                    <Ionicons name="star" size={12} color="#F59E0B" />
+                    <Text style={styles.ratingText}>Student</Text>
+                  </View>
+                </View>
+                <View style={[styles.statusPill, { backgroundColor: statusBg(item.status) }]}>
                   <Text style={[styles.statusText, { color: statusColor(item.status) }]}>
-                    {item.status || '—'}
+                    {(item.status || '—').toUpperCase()}
                   </Text>
                 </View>
               </View>
 
-              <View style={styles.detailRow}>
-                <Ionicons name="person-outline" size={16} color={Colors.textSecondary} />
-                <Text style={styles.detailLabel}>Student</Text>
-                <Text style={styles.detailValue} numberOfLines={1}>
-                  {item.studentName?.trim() || '—'}
+              {/* Service name */}
+              {item.serviceName ? (
+                <Text style={styles.serviceName} numberOfLines={1}>
+                  {item.serviceName.toUpperCase()}
                 </Text>
-              </View>
+              ) : null}
 
-              <View style={styles.detailRow}>
-                <Ionicons name="cube-outline" size={16} color={Colors.primary} />
-                <Text style={styles.detailLabel}>Service</Text>
-                <Text style={styles.detailValue} numberOfLines={1}>
-                  {item.serviceName ?? '—'}
-                </Text>
-              </View>
-
-              <View style={styles.detailRow}>
-                <Ionicons name="calendar-outline" size={16} color={Colors.textSecondary} />
-                <Text style={styles.detailLabel}>Date & time</Text>
-                <Text style={styles.detailValue}>
+              {/* Date + Time */}
+              <View style={styles.metaRow}>
+                <Ionicons name="calendar-outline" size={14} color={Colors.textSecondary} />
+                <Text style={styles.metaText}>
                   {formatBookingDate(item.bookingDate)}
-                  {formatBookingTime(item.bookingDate) ? ` · ${formatBookingTime(item.bookingDate)}` : ''}
+                  {formatBookingTime(item.bookingDate) ? ` • ${formatBookingTime(item.bookingDate)}` : ''}
                 </Text>
               </View>
 
-              <View style={styles.detailRow}>
-                <Ionicons name="cash-outline" size={16} color={Colors.textSecondary} />
-                <Text style={styles.detailLabel}>Price</Text>
-                <Text style={styles.priceHighlight}>
-                  {item.servicePrice != null && item.servicePrice !== '' ? `₹${item.servicePrice}` : '—'}
-                </Text>
-              </View>
+              {/* Price */}
+              {item.servicePrice != null && item.servicePrice !== '' ? (
+                <View style={styles.metaRow}>
+                  <Ionicons name="card-outline" size={14} color={Colors.textSecondary} />
+                  <Text style={styles.priceText}>₹{item.servicePrice}</Text>
+                </View>
+              ) : null}
 
+              {/* Notes box */}
               {item.notes != null && item.notes !== '' ? (
-                <View style={styles.detailRow}>
-                  <Ionicons name="document-text-outline" size={16} color={Colors.textSecondary} />
-                  <Text style={styles.detailLabel}>Notes</Text>
-                  <Text style={styles.detailValue} numberOfLines={3}>
-                    {item.notes}
-                  </Text>
+                <View style={styles.notesBox}>
+                  <Text style={styles.notesLabel}>STUDENT NOTES</Text>
+                  <Text style={styles.notesText}>"{item.notes}"</Text>
                 </View>
               ) : null}
             </View>
@@ -195,8 +216,8 @@ export default function VendorBookingsScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    padding: 16,
-    paddingBottom: 24,
+    padding: 14,
+    paddingBottom: 32,
     backgroundColor: Colors.backgroundSecondary,
     flexGrow: 1,
   },
@@ -210,11 +231,13 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 8,
     fontSize: 14,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
   },
   errorText: {
     marginTop: 12,
     fontSize: 14,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.error,
     textAlign: 'center',
   },
@@ -222,25 +245,26 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingHorizontal: 20,
     paddingVertical: 10,
-    borderRadius: 999,
+    borderRadius: 16,
     backgroundColor: Colors.primary,
   },
   retryButtonText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: '#FFF',
   },
   header: {
     marginBottom: 16,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 20,
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
   },
   emptyState: {
@@ -248,16 +272,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 48,
+    gap: 8,
   },
   emptyTitle: {
-    marginTop: 12,
+    marginTop: 8,
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
-    marginBottom: 4,
   },
   emptySubtitle: {
     fontSize: 14,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
     textAlign: 'center',
     paddingHorizontal: 24,
@@ -265,6 +290,7 @@ const styles = StyleSheet.create({
   list: {
     gap: 12,
   },
+  // Card
   card: {
     backgroundColor: '#FFF',
     borderRadius: 16,
@@ -275,53 +301,97 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  cardTop: {
+  cardHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    marginBottom: 14,
+    gap: 10,
   },
-  cardTitle: {
+  avatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: `${Colors.primary}18`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    fontSize: 15,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.primary,
+  },
+  studentInfo: {
+    flex: 1,
+  },
+  studentName: {
+    fontSize: 16,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.text,
+    marginBottom: 2,
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  ratingText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   statusPill: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 999,
   },
   statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'capitalize',
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.bold,
+    letterSpacing: 0.3,
   },
-  detailRow: {
+  serviceName: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.primary,
+    letterSpacing: 0.4,
+    marginBottom: 10,
+  },
+  metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
+    gap: 6,
+    marginBottom: 6,
   },
-  detailLabel: {
+  metaText: {
     fontSize: 13,
-    color: Colors.textSecondary,
-    width: 72,
+    fontFamily: Typography.fontFamily.medium,
+    color: Colors.text,
   },
-  detailValue: {
-    flex: 1,
+  priceText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
   },
-  priceHighlight: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.text,
+  notesBox: {
+    marginTop: 10,
+    backgroundColor: `${Colors.primary}0D`,
+    borderLeftWidth: 3,
+    borderLeftColor: `${Colors.primary}60`,
+    borderRadius: 8,
+    padding: 12,
+  },
+  notesLabel: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.primary,
+    letterSpacing: 0.6,
+    marginBottom: 4,
+  },
+  notesText: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
+    lineHeight: 18,
   },
 });

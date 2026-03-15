@@ -15,9 +15,11 @@ import {
   Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Colors } from '@/constants/Colors';
+import { Typography } from '@/constants/typography';
+import { Image } from 'react-native';
 import { VendorVerificationGate } from '@/components/VendorVerificationGate';
 import { serviceService } from '@/services/service.service';
 import { batchService, type ServiceBatch } from '@/services/batch.service';
@@ -397,42 +399,43 @@ export default function VendorServiceDetailScreen() {
     }
   };
 
-  const renderBatchItem = ({ item }: { item: ServiceBatch }) => {
-    const scheduleLabel = item.daysOfWeek
-      ? item.daysOfWeek.split(',').join(', ')
-      : 'Schedule not set';
+  const getBatchIconName = (startTime?: string | null): React.ComponentProps<typeof Ionicons>['name'] => {
+    if (!startTime) return 'time';
+    const hour = parseInt(startTime.split(':')[0] ?? '0', 10);
+    if (hour < 12) return 'sunny';
+    if (hour < 17) return 'partly-sunny';
+    return 'moon';
+  };
 
-    const timeLabel =
-      item.startTime && item.endTime
-        ? `${item.startTime} - ${item.endTime}`
-        : 'Time not set';
+  const getBatchIconColor = (startTime?: string | null): string => {
+    if (!startTime) return Colors.textSecondary;
+    const hour = parseInt(startTime.split(':')[0] ?? '0', 10);
+    if (hour < 12) return '#F59E0B';
+    if (hour < 17) return '#3B82F6';
+    return '#8B5CF6';
+  };
+
+  const renderBatchItem = ({ item }: { item: ServiceBatch }) => {
+    const iconName = getBatchIconName(item.startTime);
+    const iconColor = getBatchIconColor(item.startTime);
+    const startLabel = item.startTime ? `Starts ${formatTimeLabel(item.startTime)}` : 'Time not set';
+    const capacityUsed = item.studentCount ?? 0;
+    const capacityTotal = item.capacity ?? '—';
 
     return (
       <View style={styles.batchCard}>
-        <View style={styles.batchHeaderRow}>
-          <Text style={styles.batchName} numberOfLines={1}>
-            {item.name}
-          </Text>
-          {typeof item.studentCount === 'number' ? (
-            <View style={styles.studentCountPill}>
-              <Ionicons name="people-outline" size={14} color={Colors.primary} />
-              <Text style={styles.studentCountText}>{item.studentCount} students</Text>
-            </View>
-          ) : null}
-        </View>
-
-        <View style={styles.batchMetaRow}>
-          <Ionicons name="calendar-outline" size={14} color={Colors.textSecondary} />
-          <Text style={styles.batchMetaText} numberOfLines={1}>
-            {scheduleLabel}
-          </Text>
-        </View>
-
-        <View style={styles.batchMetaRow}>
-          <Ionicons name="time-outline" size={14} color={Colors.textSecondary} />
-          <Text style={styles.batchMetaText} numberOfLines={1}>
-            {timeLabel}
-          </Text>
+        <View style={styles.batchCardMain}>
+          <View style={[styles.batchIconCircle, { backgroundColor: `${iconColor}18` }]}>
+            <Ionicons name={iconName} size={22} color={iconColor} />
+          </View>
+          <View style={styles.batchInfo}>
+            <Text style={styles.batchName} numberOfLines={1}>{item.name}</Text>
+            <Text style={styles.batchStartTime}>{startLabel}</Text>
+          </View>
+          <View style={styles.batchCapacityBlock}>
+            <Text style={styles.batchCapacityLabel}>Capacity</Text>
+            <Text style={styles.batchCapacityValue}>{capacityUsed}/{capacityTotal}</Text>
+          </View>
         </View>
 
         <View style={styles.batchActionsRow}>
@@ -441,25 +444,25 @@ export default function VendorServiceDetailScreen() {
             activeOpacity={0.9}
             onPress={() => handleViewBatch(item)}
           >
-            <Ionicons name="eye-outline" size={16} color={Colors.primary} />
-            <Text style={[styles.batchActionText, styles.batchViewText]}>View</Text>
+            <Ionicons name="eye" size={14} color="#FFF" />
+            <Text style={[styles.batchActionText, styles.batchViewText]}>View Details</Text>
           </TouchableOpacity>
-
           <TouchableOpacity
             style={[styles.batchActionButton, styles.batchEditButton]}
             activeOpacity={0.9}
             onPress={() => handleEditBatch(item)}
           >
-            <Ionicons name="create-outline" size={16} color={Colors.primary} />
-            <Text style={[styles.batchActionText, styles.batchViewText]}>Edit</Text>
+            {/* <Ionicons name="create-outline" size={14} color={Colors.primary} /> */}
+            <MaterialIcons name="mode-edit" size={14} color={Colors.primary} />
+            
+            <Text style={styles.batchActionText}>Edit</Text>
           </TouchableOpacity>
-
           <TouchableOpacity
             style={[styles.batchActionButton, styles.batchDeleteButton]}
             activeOpacity={0.9}
             onPress={() => handleRequestDeleteBatch(item)}
           >
-            <Ionicons name="trash-outline" size={16} color="#FF6B6B" />
+            <Ionicons name="trash" size={14} color={Colors.error} />
             <Text style={[styles.batchActionText, styles.batchDeleteText]}>Delete</Text>
           </TouchableOpacity>
         </View>
@@ -505,58 +508,84 @@ export default function VendorServiceDetailScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Service summary card */}
+        {/* Hero image */}
+        <View style={styles.heroWrap}>
+          {(service as any).imageUrl ? (
+            <Image source={{ uri: (service as any).imageUrl }} style={styles.heroImage} />
+          ) : (
+            <View style={styles.heroPlaceholder}>
+              <Ionicons name="image" size={44} color={Colors.primary} />
+            </View>
+          )}
+          {(service as any).status ? (
+            <View style={styles.heroStatusBadge}>
+              <Text style={styles.heroStatusText}>
+                {((service as any).status as string).charAt(0).toUpperCase() + ((service as any).status as string).slice(1)}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* Service info card */}
         <View style={styles.serviceCard}>
-          <Text style={styles.serviceTitle}>{service.name}</Text>
+          <View style={styles.serviceTitleRow}>
+            <Text style={styles.serviceTitle} numberOfLines={2}>{service.name}</Text>
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => router.replace('/(vendor)/services' as any)}
+            >
+              {/* <Ionicons name="pencil" size={14} color={Colors.primary} /> */}
+              <MaterialIcons name="mode-edit" size={14} color={Colors.primary} />
+              <Text style={styles.editButtonText}>Edit</Text>
+            </TouchableOpacity>
+          </View>
+
           {service.description ? (
             <Text style={styles.serviceSubtitle}>{service.description}</Text>
           ) : null}
 
           <View style={styles.serviceMetaRow}>
-            {service.categoryName ? (
-              <View style={styles.metaChip}>
-                <Ionicons name="pricetag-outline" size={14} color={Colors.textSecondary} />
-                <Text style={styles.metaChipText}>{service.categoryName}</Text>
-              </View>
-            ) : null}
-
-            {service.branchName ? (
-              <View style={styles.metaChip}>
-                <Ionicons name="business-outline" size={14} color={Colors.textSecondary} />
-                <Text style={styles.metaChipText}>{service.branchName}</Text>
-              </View>
-            ) : null}
-
             {service.price !== undefined ? (
-              <View style={styles.metaChip}>
-                <Ionicons name="cash-outline" size={14} color={Colors.textSecondary} />
-                <Text style={styles.metaChipText}>₹{service.price}</Text>
+              <View style={styles.metaItem}>
+                <Text style={styles.metaItemLabel}>PRICE</Text>
+                <Text style={styles.metaItemValue}>₹{service.price}</Text>
+              </View>
+            ) : null}
+            {service.categoryName ? (
+              <View style={styles.metaItem}>
+                <Text style={styles.metaItemLabel}>CATEGORY</Text>
+                <Text style={styles.metaItemValue}>{service.categoryName}</Text>
+              </View>
+            ) : null}
+            {service.branchName ? (
+              <View style={styles.metaItem}>
+                <Text style={styles.metaItemLabel}>BRANCH</Text>
+                <Text style={styles.metaItemValue}>{service.branchName}</Text>
               </View>
             ) : null}
           </View>
         </View>
 
-        {/* Batches header */}
+        {/* Batches section */}
         <View style={styles.batchesHeaderRow}>
           <View>
-            <Text style={styles.batchesTitle}>Batches</Text>
-            <Text style={styles.batchesSubtitle}>
-              Manage all batches running under this service.
-            </Text>
+            <Text style={styles.batchesTitle}>Service Batches</Text>
+            <Text style={styles.batchesSubtitle}>Manage daily schedules</Text>
           </View>
         </View>
 
         {isLoadingBatches ? (
-          <View style={styles.centerContainer}>
+          <View style={{ paddingVertical: 16, alignItems: 'center' }}>
             <ActivityIndicator size="small" color={Colors.primary} />
           </View>
         ) : null}
 
-        {batches.length === 0 ? (
+        {batches.length === 0 && !isLoadingBatches ? (
           <View style={styles.emptyState}>
+            <Ionicons name="calendar-outline" size={40} color={Colors.textSecondary} />
             <Text style={styles.emptyTitle}>No batches yet</Text>
             <Text style={styles.emptySubtitle}>
-              Create your first batch for this service to start enrolling students.
+              Create your first batch to start enrolling students.
             </Text>
           </View>
         ) : (
@@ -568,18 +597,9 @@ export default function VendorServiceDetailScreen() {
             contentContainerStyle={styles.batchListContent}
           />
         )}
-
-        <TouchableOpacity
-          style={styles.refreshButton}
-          activeOpacity={0.8}
-          onPress={handleRefreshBatches}
-        >
-          <Ionicons name="refresh-outline" size={16} color={Colors.primary} />
-          <Text style={styles.refreshButtonText}>Refresh batches</Text>
-        </TouchableOpacity>
       </ScrollView>
 
-      {/* Create Batch Modal (styled similar to Add Service) */}
+      {/* Create Batch (drawer from bottom) */}
       <Modal
         visible={isBatchModalVisible}
         animationType="slide"
@@ -590,12 +610,15 @@ export default function VendorServiceDetailScreen() {
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setIsBatchModalVisible(false)} />
           <View style={styles.modalCard}>
             <View style={styles.modalHeaderRow}>
               <View style={styles.modalTitleContainer}>
-                <Text style={styles.modalTitle}>Add New Batch</Text>
+                <Text style={styles.modalTitle}>{editingBatch ? 'Edit Batch' : 'Add New Batch'}</Text>
                 <Text style={styles.modalSubtitle}>
-                  Fill in the details below to create a new batch for this service.
+                  {editingBatch
+                    ? 'Update the batch details below.'
+                    : 'Fill in the details below to create a new batch for this service.'}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setIsBatchModalVisible(false)}>
@@ -829,15 +852,16 @@ export default function VendorServiceDetailScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-      {/* Delete Batch Confirm Modal */}
+      {/* Delete Batch Confirm (drawer) */}
       {batchPendingDelete && (
         <Modal
           visible={!!batchPendingDelete}
-          animationType="fade"
+          animationType="slide"
           transparent
           onRequestClose={() => setBatchPendingDelete(null)}
         >
           <View style={styles.modalOverlay}>
+            <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setBatchPendingDelete(null)} />
             <View style={styles.deleteModalCard}>
               <View style={styles.deleteIconCircle}>
                 <Ionicons name="trash-outline" size={26} color="#FF6B6B" />
@@ -928,8 +952,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   scrollContent: {
-    padding: 16,
-    paddingBottom: 24,
+    paddingBottom: 32,
   },
   centerContainer: {
     flex: 1,
@@ -940,67 +963,127 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 8,
     fontSize: 14,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
   },
   errorText: {
     fontSize: 14,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.error,
     textAlign: 'center',
   },
+  // Hero image
+  heroWrap: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 12,
+    borderRadius: 20,
+    overflow: 'hidden',
+    height: 180,
+  },
+  heroImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  heroPlaceholder: {
+    flex: 1,
+    backgroundColor: `${Colors.primaryLight}`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroStatusBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  heroStatusText: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: '#FFF',
+  },
+  // Service info card
   serviceCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 16,
+    backgroundColor: Colors.background,
+    paddingHorizontal: 16,
+    marginHorizontal: 16,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
+  },
+  serviceTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 6,
   },
   serviceTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+    flex: 1,
+    fontSize: 18,
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
-    marginBottom: 4,
+    marginRight: 8,
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingTop: 2,
+  },
+  editButtonText: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.medium,
+    color: Colors.primary,
   },
   serviceSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
-    marginBottom: 12,
+    lineHeight: 20,
+    marginBottom: 14,
   },
   serviceMetaRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    gap: 20,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingTop: 12,
+    marginTop: 4,
   },
-  metaChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: '#F3F4F6',
-    gap: 6,
+  metaItem: {
+    flexDirection: 'column',
+    gap: 2,
   },
-  metaChipText: {
-    fontSize: 12,
+  metaItemLabel: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.textSecondary,
+    letterSpacing: 0.5,
   },
+  metaItemValue: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.text,
+  },
+  // Batches section
   batchesHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginHorizontal: 16,
     marginBottom: 12,
   },
   batchesTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 17,
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
   },
   batchesSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
+    marginTop: 2,
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
   },
   addBatchButton: {
@@ -1010,148 +1093,156 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     backgroundColor: Colors.primary,
-    gap: 6,
+    gap: 4,
   },
   addBatchButtonText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: '#FFF',
   },
   emptyState: {
     paddingVertical: 32,
     alignItems: 'center',
+    gap: 8,
   },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 16,
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
-    marginBottom: 4,
   },
   emptySubtitle: {
-    fontSize: 14,
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
     textAlign: 'center',
+    paddingHorizontal: 24,
   },
   batchListContent: {
+    paddingHorizontal: 16,
     paddingBottom: 8,
   },
+  // Batch card
   batchCard: {
     backgroundColor: '#FFF',
-    borderRadius: 16,
+    borderRadius: 14,
     padding: 14,
     marginBottom: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
     shadowRadius: 6,
     elevation: 1,
   },
-  batchHeaderRow: {
+  batchCardMain: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
+    gap: 12,
+    marginBottom: 10,
+  },
+  batchIconCircle: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  batchInfo: {
+    flex: 1,
   },
   batchName: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.text,
+    marginBottom: 2,
   },
-  studentCountPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: '#ECFEFF',
-  },
-  studentCountText: {
+  batchStartTime: {
     fontSize: 12,
-    color: Colors.primary,
-    fontWeight: '500',
-  },
-  batchMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 2,
-  },
-  batchMetaText: {
-    fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
-    flex: 1,
+  },
+  batchCapacityBlock: {
+    alignItems: 'flex-end',
+  },
+  batchCapacityLabel: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.medium,
+    color: Colors.textSecondary,
+    letterSpacing: 0.4,
+    marginBottom: 2,
+  },
+  batchCapacityValue: {
+    fontSize: 15,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.text,
   },
   batchActionsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
-    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingTop: 10,
   },
   batchActionButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: 999,
+    paddingVertical: 7,
+    borderRadius: 10,
     borderWidth: 1,
+    gap: 4,
   },
   batchViewButton: {
-    backgroundColor: `${Colors.primary}12`,
-    borderColor: `${Colors.primary}22`,
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+    flex: 1,
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+  },
+  batchViewText: {
+    color: '#FFF',top: -2,
+    fontFamily: Typography.fontFamily.semiBold,
   },
   batchEditButton: {
-    backgroundColor: `${Colors.primary}12`,
-    borderColor: `${Colors.primary}22`,
+    backgroundColor: `${Colors.primary}10`,
+    borderColor: `${Colors.primary}30`,
   },
   batchDeleteButton: {
-    backgroundColor: '#FFF0F0',
-    borderColor: 'rgba(255, 107, 107, 0.25)',
+    backgroundColor: `${Colors.error}10`,
+    borderColor: `${Colors.error}30`,
   },
   batchActionText: {
     fontSize: 13,
-    fontWeight: '600',
-    marginLeft: 6,
-  },
-  batchViewText: {
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.primary,
+    top: -2,
   },
   batchDeleteText: {
-    color: '#FF6B6B',
-  },
-  refreshButton: {
-    marginTop: 8,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#E5E7EB',
-  },
-  refreshButtonText: {
-    fontSize: 13,
-    color: Colors.textSecondary,
+    color: Colors.error,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 16,
+    justifyContent: 'flex-end',
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
   },
   modalCard: {
     width: '100%',
     maxHeight: '90%',
-    borderRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     backgroundColor: '#FFF',
-    padding: 16,
+    padding: 20,
+    paddingBottom: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
     shadowRadius: 20,
-    elevation: 4,
+    elevation: 8,
   },
   modalHeaderRow: {
     flexDirection: 'row',
@@ -1164,12 +1255,13 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
   },
   modalSubtitle: {
     marginTop: 4,
     fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
   },
   modalScroll: {
@@ -1183,20 +1275,21 @@ const styles = StyleSheet.create({
   },
   inputLabel: {
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.text,
     marginBottom: 6,
   },
   inputContainer: {
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.backgroundSecondary,
   },
   input: {
     fontSize: 14,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.text,
   },
   dropdownTrigger: {
@@ -1269,11 +1362,12 @@ const styles = StyleSheet.create({
   },
   dayChipText: {
     fontSize: 12,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
   },
   dayChipTextActive: {
     color: Colors.primary,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
   },
   row: {
     flexDirection: 'row',
@@ -1292,7 +1386,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 12,
-    borderRadius: 999,
+    borderRadius: 16,
     backgroundColor: Colors.primary,
     gap: 8,
   },
@@ -1301,19 +1395,21 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: '#FFF',
   },
   secondaryButton: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: '#F3F4F6',
+    borderRadius: 16,
+    backgroundColor: Colors.backgroundSecondary,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   secondaryButtonText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.textSecondary,
   },
   fab: {
@@ -1322,7 +1418,7 @@ const styles = StyleSheet.create({
     bottom: 24,
     width: 56,
     height: 56,
-    borderRadius: 28,
+    borderRadius: 18,
     backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1334,16 +1430,17 @@ const styles = StyleSheet.create({
   },
   deleteModalCard: {
     width: '100%',
-    maxWidth: 380,
-    borderRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     backgroundColor: '#FFF',
     paddingHorizontal: 20,
     paddingVertical: 20,
+    paddingBottom: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
     shadowRadius: 20,
-    elevation: 6,
+    elevation: 8,
   },
   deleteIconCircle: {
     width: 52,
@@ -1357,19 +1454,20 @@ const styles = StyleSheet.create({
   },
   deleteTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
     textAlign: 'center',
     marginBottom: 8,
   },
   deleteMessage: {
     fontSize: 14,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
     textAlign: 'center',
     marginBottom: 16,
   },
   deleteBatchName: {
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
   },
   deleteActions: {
@@ -1380,29 +1478,29 @@ const styles = StyleSheet.create({
   deleteCancelButton: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 999,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.backgroundSecondary,
   },
   deleteCancelText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.textSecondary,
   },
   deleteConfirmButton: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 999,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#EF4444',
+    backgroundColor: Colors.error,
   },
   deleteConfirmText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: '#FFF',
   },
 });

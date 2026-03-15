@@ -95,3 +95,47 @@ const styles = StyleSheet.create({
   },
 });
 
+const VENDOR_ITEMS = [
+  { key: 'dashboard', label: 'Home', icon: 'grid' as const, iconFocused: 'grid' as const },
+  { key: 'services', label: 'Services', icon: 'briefcase' as const, iconFocused: 'briefcase' as const },
+  { key: 'analytics', label: 'Analytics', icon: 'bar-chart' as const, iconFocused: 'bar-chart' as const },
+  { key: 'profile', label: 'Profile', icon: 'person' as const, iconFocused: 'person' as const },
+];
+
+export function VendorBottomBar() {
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  return (
+    <View style={[styles.container, { paddingBottom: insets.bottom || 8 }]}>
+      {VENDOR_ITEMS.map((item) => {
+        const focused =
+          pathname?.startsWith(`/(vendor)/${item.key}`) ||
+          (item.key === 'services' && pathname?.startsWith('/(vendor)/service/'));
+        const iconName = focused ? item.iconFocused : item.icon;
+        const color = focused ? Colors.tabActive : Colors.tabInactive;
+
+        return (
+          <TouchableOpacity
+            key={item.key}
+            style={styles.tab}
+            activeOpacity={0.8}
+            onPress={() => router.navigate(`/(vendor)/${item.key}` as any)}
+          >
+            <Ionicons name={iconName} size={22} color={color} />
+            <Text
+              style={[
+                styles.label,
+                focused && styles.labelFocused,
+              ]}
+            >
+              {item.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+

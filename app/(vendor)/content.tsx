@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,15 +14,30 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '@/constants/Colors';
+import { Typography } from '@/constants/typography';
 import { VendorVerificationGate } from '@/components/VendorVerificationGate';
 import { contentService, type VendorContent, type ContentType } from '@/services/content.service';
+
+type TabKey = 'all' | 'video' | 'article';
+
+function formatContentDate(iso: string | undefined): string {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return '';
+  }
+}
 
 export default function VendorContentScreen() {
   const [list, setList] = useState<VendorContent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabKey>('all');
   const [modalVisible, setModalVisible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingContent, setEditingContent] = useState<VendorContent | null>(null);
@@ -55,6 +70,12 @@ export default function VendorContentScreen() {
     setRefreshing(true);
     loadContent();
   };
+
+  const filteredList = useMemo(() => {
+    if (activeTab === 'all') return list;
+    if (activeTab === 'video') return list.filter((item) => item.contentType === 'video');
+    return list.filter((item) => item.contentType === 'text');
+  }, [list, activeTab]);
 
   const openCreateModal = () => {
     setEditingContent(null);
@@ -166,47 +187,60 @@ export default function VendorContentScreen() {
     }
   };
 
-  const renderItem = ({ item }: { item: VendorContent }) => (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <View style={[styles.typePill, item.contentType === 'video' ? styles.typeVideo : styles.typeText]}>
-          <Ionicons
-            name={item.contentType === 'video' ? 'videocam-outline' : 'document-text-outline'}
-            size={14}
-            color="#FFF"
-          />
-          <Text style={styles.typePillText}>{item.contentType === 'video' ? 'Video' : 'Text'}</Text>
+  const renderItem = ({ item }: { item: VendorContent }) => {
+    const isVideo = item.contentType === 'video';
+    const createdLabel = formatContentDate(item.createdAt);
+    return (
+      <View style={styles.card}>
+        <View style={styles.cardInner}>
+          <View style={styles.cardIconWrap}>
+            <Ionicons
+              name={isVideo ? 'play' : 'document-text'}
+              size={24}
+              color={Colors.primary}
+            />
+          </View>
+          <View style={styles.cardBody}>
+            <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
+            {item.description ? (
+              <Text style={styles.cardDescription} numberOfLines={2}>{item.description}</Text>
+            ) : null}
+            {createdLabel ? (
+              <View style={styles.cardDateRow}>
+                <Ionicons name="calendar" size={12} color={Colors.textSecondary} />
+                <Text style={styles.cardDateText}>Created {createdLabel}</Text>
+              </View>
+            ) : null}
+            <View style={styles.cardActions}>
+              <TouchableOpacity
+                style={styles.btnUpdate}
+                onPress={() => openEditModal(item)}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="edit" size={16} color={Colors.primary} />
+                <Text style={styles.btnUpdateText}>Update</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.btnDelete}
+                onPress={() => handleDelete(item)}
+                disabled={deletingId === item.id}
+                activeOpacity={0.8}
+              >
+                {deletingId === item.id ? (
+                  <ActivityIndicator size="small" color={Colors.error} />
+                ) : (
+                  <>
+                    <Ionicons name="trash" size={16} color={Colors.error} />
+                    <Text style={styles.btnDeleteText}>Delete</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       </View>
-      <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
-      {item.description ? (
-        <Text style={styles.cardDescription} numberOfLines={2}>{item.description}</Text>
-      ) : null}
-      <View style={styles.cardActions}>
-        <TouchableOpacity
-          style={[styles.cardActionBtn, styles.cardActionUpdate]}
-          onPress={() => openEditModal(item)}
-        >
-          <Ionicons name="create-outline" size={18} color={Colors.primary} />
-          <Text style={styles.cardActionUpdateText}>Update</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.cardActionBtn, styles.cardActionDelete]}
-          onPress={() => handleDelete(item)}
-          disabled={deletingId === item.id}
-        >
-          {deletingId === item.id ? (
-            <ActivityIndicator size="small" color="#FF6B6B" />
-          ) : (
-            <>
-              <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
-              <Text style={styles.cardActionDeleteText}>Delete</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <VendorVerificationGate>
@@ -218,17 +252,45 @@ export default function VendorContentScreen() {
           </View>
         ) : (
           <>
+            <View style={styles.tabsRow}>
+              {(['all', 'video', 'article'] as const).map((tab) => (
+                <TouchableOpacity
+                  key={tab}
+                  style={styles.tabItem}
+                  onPress={() => setActiveTab(tab)}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.tabLabel,
+                      activeTab === tab && styles.tabLabelActive,
+                    ]}
+                  >
+                    {tab === 'all' ? 'All' : tab === 'video' ? 'Video' : 'Article'}
+                  </Text>
+                  {activeTab === tab && <View style={styles.tabUnderline} />}
+                </TouchableOpacity>
+              ))}
+            </View>
             <FlatList
-              data={list}
+              data={filteredList}
               renderItem={renderItem}
               keyExtractor={(item) => item.id}
-              contentContainerStyle={[styles.listContent, list.length === 0 && styles.listEmpty]}
+              contentContainerStyle={[styles.listContent, filteredList.length === 0 && styles.listEmpty]}
               ListEmptyComponent={
                 <View style={styles.empty}>
-                  <Ionicons name="document-text-outline" size={56} color={Colors.textSecondary} />
-                  <Text style={styles.emptyTitle}>No content yet</Text>
+                  <Ionicons
+                    name={activeTab === 'video' ? 'videocam-outline' : activeTab === 'article' ? 'document-text-outline' : 'folder-open-outline'}
+                    size={56}
+                    color={Colors.textSecondary}
+                  />
+                  <Text style={styles.emptyTitle}>
+                    {activeTab === 'all' ? 'No content yet' : activeTab === 'video' ? 'No videos' : 'No articles'}
+                  </Text>
                   <Text style={styles.emptySubtitle}>
-                    Create content for your services or batches.
+                    {activeTab === 'all'
+                      ? 'Create content for your services or batches.'
+                      : 'Add content from the + button to see it here.'}
                   </Text>
                 </View>
               }
@@ -244,16 +306,20 @@ export default function VendorContentScreen() {
 
         <Modal
           visible={modalVisible}
-          animationType="fade"
+          animationType="slide"
           transparent
           onRequestClose={closeModal}
         >
-          <View style={styles.modalOverlay}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-              style={styles.modalKeyboardView}
-            >
-              <View style={styles.modalCard}>
+          <KeyboardAvoidingView
+            style={styles.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <TouchableOpacity
+              style={styles.modalBackdrop}
+              activeOpacity={1}
+              onPress={closeModal}
+            />
+            <View style={styles.modalCard}>
                 <View style={styles.modalHeader}>
                   <View style={styles.modalTitleContainer}>
                     <Text style={styles.modalTitle}>
@@ -361,6 +427,10 @@ export default function VendorContentScreen() {
                   )}
 
                   <View style={styles.modalActions}>
+                    
+                    <TouchableOpacity style={styles.cancelBtn} onPress={closeModal}>
+                      <Text style={styles.cancelBtnText}>Cancel</Text>
+                    </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
                       onPress={handleSave}
@@ -372,14 +442,10 @@ export default function VendorContentScreen() {
                         <Text style={styles.saveBtnText}>{editingContent ? 'Update' : 'Save'}</Text>
                       )}
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.cancelBtn} onPress={closeModal}>
-                      <Text style={styles.cancelBtnText}>Cancel</Text>
-                    </TouchableOpacity>
                   </View>
                 </ScrollView>
-              </View>
-            </KeyboardAvoidingView>
-          </View>
+            </View>
+          </KeyboardAvoidingView>
         </Modal>
       </View>
     </VendorVerificationGate>
@@ -389,7 +455,7 @@ export default function VendorContentScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.backgroundSecondary,
+    backgroundColor: Colors.background,
   },
   center: {
     flex: 1,
@@ -400,6 +466,29 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 14,
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
+  },
+  tabsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingTop: 20,
+  },
+  tabItem: {
+    marginRight: 24,
+  },
+  tabLabel: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.semiBold,
+  },
+  tabLabelActive: {
+    color: Colors.primary,
+  },
+  tabUnderline: {
+    marginTop: 4,
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: Colors.primary,
   },
   listContent: {
     padding: 16,
@@ -410,81 +499,99 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 14,
+    padding: 14,
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  cardHeader: {
+  cardInner: {
     flexDirection: 'row',
-    marginBottom: 8,
+    alignItems: 'flex-start',
+    gap: 12,
   },
-  typePill: {
-    flexDirection: 'row',
+  cardIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
+    justifyContent: 'center',
+    backgroundColor: `${Colors.primary}18`,
   },
-  typeVideo: {
-    backgroundColor: Colors.primary,
-  },
-  typeText: {
-    backgroundColor: Colors.textSecondary,
-  },
-  typePillText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FFF',
+  cardBody: {
+    flex: 1,
+    minWidth: 0,
   },
   cardTitle: {
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: 16,
+    fontFamily: Typography.fontFamily.extraBold,
     color: Colors.text,
     marginBottom: 4,
   },
   cardDescription: {
-    fontSize: 14,
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  cardDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+  },
+  cardDateText: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
+    top: -1,
   },
   cardActions: {
     flexDirection: 'row',
     gap: 8,
     marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.06)',
+    width: '100%',
   },
-  cardActionBtn: {
+  btnUpdate: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    borderRadius: 8,
-    gap: 6,
-    borderWidth: 1,
-  },
-  cardActionUpdate: {
+    borderRadius: 10,
     backgroundColor: `${Colors.primary}15`,
-    borderColor: `${Colors.primary}22`,
+    borderWidth: 1,
+    borderColor: `${Colors.primary}30`,
   },
-  cardActionUpdateText: {
-    fontSize: 14,
-    fontWeight: '600',
+  btnUpdateText: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.primary,
+    top: -1,
   },
-  cardActionDelete: {
-    backgroundColor: '#FFF0F0',
-    borderColor: 'rgba(255, 107, 107, 0.25)',
+  btnDelete: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: `${Colors.error}12`,
+    borderWidth: 1,
+    borderColor: `${Colors.error}30`,
   },
-  cardActionDeleteText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FF6B6B',
+  btnDeleteText: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: Colors.error,
+    top: -1,
   },
   empty: {
     flex: 1,
@@ -494,13 +601,14 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.extraBold,
     color: Colors.text,
     marginTop: 12,
     marginBottom: 4,
   },
   emptySubtitle: {
     fontSize: 14,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
     textAlign: 'center',
   },
@@ -510,7 +618,7 @@ const styles = StyleSheet.create({
     bottom: 20,
     width: 56,
     height: 56,
-    borderRadius: 28,
+    borderRadius: 18,
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -522,27 +630,25 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.35)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 16,
+    justifyContent: 'flex-end',
   },
-  modalKeyboardView: {
-    width: '100%',
-    maxWidth: 420,
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
   },
   modalCard: {
     backgroundColor: '#FFF',
-    borderRadius: 24,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     paddingHorizontal: 20,
     paddingTop: 18,
-    paddingBottom: 8,
+    paddingBottom: 24,
     maxHeight: '90%',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 24,
-    elevation: 10,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 8,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -556,13 +662,14 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.extraBold,
     color: Colors.text,
   },
   modalSubtitle: {
     marginTop: 4,
     fontSize: 13,
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
   },
   closeBtn: {
     marginLeft: -8,
@@ -579,18 +686,19 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.text,
     marginBottom: 6,
   },
   input: {
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
     color: Colors.text,
+    fontFamily: Typography.fontFamily.regular,
     backgroundColor: '#F9FAFB',
   },
   textArea: {
@@ -611,7 +719,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 999,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.border,
     backgroundColor: '#F9FAFB',
@@ -622,21 +730,23 @@ const styles = StyleSheet.create({
   },
   chipText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.textSecondary,
+    top: -1,
   },
   chipTextActive: {
     color: '#FFF',
   },
   modalActions: {
+    flexDirection: 'row',
     marginTop: 8,
-    marginBottom: 24,
     gap: 10,
   },
   saveBtn: {
+    flex: 1,
     backgroundColor: Colors.primary,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -645,16 +755,20 @@ const styles = StyleSheet.create({
   },
   saveBtnText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: '#FFF',
   },
   cancelBtn: {
-    paddingVertical: 12,
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 16,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F1F5F9',
   },
   cancelBtnText: {
     fontSize: 15,
     color: Colors.textSecondary,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.regular,
   },
 });

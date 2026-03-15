@@ -17,14 +17,16 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/Colors';
+import { Typography } from '@/constants/typography';
 import { VendorVerificationGate } from '@/components/VendorVerificationGate';
 import { courseService, type VendorCourse } from '@/services/course.service';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function formatDate(dateStr?: string): string {
   if (!dateStr) return '';
   try {
     const d = new Date(dateStr);
-    return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   } catch {
     return '';
   }
@@ -32,6 +34,7 @@ function formatDate(dateStr?: string): string {
 
 export default function VendorCoursesScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [list, setList] = useState<VendorCourse[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -42,8 +45,9 @@ export default function VendorCoursesScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
 
-  const loadCourses = useCallback(async () => {
+  const loadCourses = useCallback(async (isRefresh?: boolean) => {
     try {
+      if (!isRefresh) setLoading(true);
       const res = await courseService.getMyCourses();
       setList(Array.isArray(res.data) ? res.data : []);
     } catch (e) {
@@ -55,14 +59,9 @@ export default function VendorCoursesScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    loadCourses();
-  }, [loadCourses]);
+  useEffect(() => { loadCourses(); }, [loadCourses]);
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadCourses();
-  };
+  const onRefresh = () => { setRefreshing(true); loadCourses(true); };
 
   const openCreateModal = () => {
     setTitle('');
@@ -70,9 +69,7 @@ export default function VendorCoursesScreen() {
     setModalVisible(true);
   };
 
-  const closeModal = () => {
-    setModalVisible(false);
-  };
+  const closeModal = () => setModalVisible(false);
 
   const handleDelete = (item: VendorCourse) => {
     Alert.alert(
@@ -87,8 +84,7 @@ export default function VendorCoursesScreen() {
             setDeletingId(item.id);
             try {
               await courseService.deleteCourse(item.id);
-              Alert.alert('Success', 'Course deleted successfully.');
-              loadCourses();
+              loadCourses(true);
             } catch (e: any) {
               Alert.alert('Error', e?.message ?? 'Failed to delete course.');
             } finally {
@@ -105,16 +101,14 @@ export default function VendorCoursesScreen() {
       Alert.alert('Validation', 'Please enter a course title.');
       return;
     }
-
     setSaving(true);
     try {
       await courseService.createCourse({
         title: title.trim(),
         description: description.trim() || undefined,
       });
-      Alert.alert('Success', 'Course created successfully.');
       closeModal();
-      loadCourses();
+      loadCourses(true);
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Failed to create course.');
     } finally {
@@ -122,60 +116,62 @@ export default function VendorCoursesScreen() {
     }
   };
 
-  const renderItem = ({ item }: { item: VendorCourse }) => (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
-        <Ionicons name="bookmark-outline" size={20} color={Colors.primary} />
+  const renderItem = ({ item }: { item: VendorCourse }) => {
+    const dateLabel = formatDate(item.createdAt);
+    return (
+      <View style={styles.card}>
+        <View style={styles.cardInner}>
+          <View style={styles.cardIconWrap}>
+            <Ionicons name="book" size={24} color={Colors.primary} />
+          </View>
+          <View style={styles.cardBody}>
+            <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
+            {item.description ? (
+              <Text style={styles.cardDescription} numberOfLines={2}>{item.description}</Text>
+            ) : null}
+            {dateLabel ? (
+              <View style={styles.cardDateRow}>
+                <Ionicons name="calendar-outline" size={12} color={Colors.textSecondary} />
+                <Text style={styles.cardDateText}>Created {dateLabel}</Text>
+              </View>
+            ) : null}
+            <View style={styles.cardActions}>
+              <TouchableOpacity
+                style={styles.btnView}
+                activeOpacity={0.8}
+                onPress={() =>
+                  router.push({ pathname: '/(vendor)/course/[courseId]' as any, params: { courseId: item.id } })
+                }
+              >
+                <Ionicons name="layers" size={16} color={Colors.primary} />
+                <Text style={styles.btnViewText}>View Course</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.btnDelete}
+                onPress={() => handleDelete(item)}
+                disabled={deletingId === item.id}
+                activeOpacity={0.8}
+              >
+                {deletingId === item.id ? (
+                  <ActivityIndicator size="small" color={Colors.error} />
+                ) : (
+                  <>
+                    <Ionicons name="trash-outline" size={16} color={Colors.error} />
+                    <Text style={styles.btnDeleteText}>Delete</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </View>
-      {item.description ? (
-        <Text style={styles.cardDescription} numberOfLines={2}>{item.description}</Text>
-      ) : null}
-      <Text style={styles.cardDate}>Created {formatDate(item.createdAt)}</Text>
-      <View style={styles.cardActions}>
-        <TouchableOpacity
-          style={[styles.cardBtn, styles.cardBtnEdit]}
-          onPress={() => router.push({ pathname: '/(vendor)/course/[courseId]' as any, params: { courseId: item.id } })}
-        >
-          <Ionicons name="create-outline" size={18} color={Colors.primary} />
-          <Text style={styles.cardBtnEditText}>Edit</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.cardBtn, styles.cardBtnContent]}
-          onPress={() => router.push({ pathname: '/(vendor)/course/[courseId]' as any, params: { courseId: item.id } })}
-        >
-          <Ionicons name="document-text-outline" size={18} color={Colors.primary} />
-          <Text style={styles.cardBtnContentText}>Content</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.cardBtn, styles.cardBtnDelete]}
-          onPress={() => handleDelete(item)}
-          disabled={deletingId === item.id}
-        >
-          {deletingId === item.id ? (
-            <ActivityIndicator size="small" color="#FF6B6B" />
-          ) : (
-            <>
-              <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
-              <Text style={styles.cardBtnDeleteText}>Delete</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <VendorVerificationGate>
       <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Courses</Text>
-          <Text style={styles.subtitle}>
-            Create and manage your courses and batches here.
-          </Text>
-        </View>
-
-        {loading ? (
+        {loading && !refreshing ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color={Colors.primary} />
             <Text style={styles.loadingText}>Loading courses…</Text>
@@ -191,94 +187,91 @@ export default function VendorCoursesScreen() {
                 <View style={styles.empty}>
                   <Ionicons name="school-outline" size={56} color={Colors.textSecondary} />
                   <Text style={styles.emptyTitle}>No courses yet</Text>
-                  <Text style={styles.emptySubtitle}>
-                    Create a course to add lessons and topics.
-                  </Text>
+                  <Text style={styles.emptySubtitle}>Create a course to add lessons and topics.</Text>
                 </View>
               }
               refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} tintColor={Colors.primary} />
               }
             />
-            <TouchableOpacity style={styles.fab} onPress={openCreateModal}>
+            <TouchableOpacity
+              style={[styles.fab, { bottom: 16 }]}
+              onPress={openCreateModal}
+            >
               <Ionicons name="add" size={28} color="#FFF" />
             </TouchableOpacity>
           </>
         )}
 
-        <Modal
-          visible={modalVisible}
-          animationType="fade"
-          transparent
-          onRequestClose={closeModal}
-        >
-          <View style={styles.modalOverlay}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-              style={styles.modalKeyboardView}
-            >
-              <View style={styles.modalCard}>
-                <View style={styles.modalHeader}>
-                  <View style={styles.modalTitleContainer}>
-                    <Text style={styles.modalTitle}>Create New Course</Text>
-                    <Text style={styles.modalSubtitle}>
-                      Add a new course to your curriculum. You can add lessons and topics after creation.
-                    </Text>
-                  </View>
-                  <TouchableOpacity onPress={closeModal} style={styles.closeBtn}>
-                    <Ionicons name="close" size={22} color={Colors.textSecondary} />
-                  </TouchableOpacity>
+        {/* Create Course Modal */}
+        <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={closeModal}>
+          <KeyboardAvoidingView
+            style={styles.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeaderRow}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={styles.modalTitle}>Create New Course</Text>
+                  <Text style={styles.modalSubtitle}>Add lessons and topics after creation.</Text>
                 </View>
+                <TouchableOpacity style={styles.modalCloseBtn} onPress={closeModal}>
+                  <Ionicons name="close" size={20} color={Colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
 
-                <ScrollView
-                  style={styles.modalScroll}
-                  contentContainerStyle={styles.modalScrollContent}
-                  keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator={false}
-                >
-                  <View style={styles.field}>
-                    <Text style={styles.label}>Course Title *</Text>
+              <ScrollView
+                style={{ marginTop: 16 }}
+                contentContainerStyle={{ paddingBottom: 12 }}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={styles.field}>
+                  <Text style={styles.fieldLabel}>Course Title *</Text>
+                  <View style={styles.inputWrap}>
                     <TextInput
                       style={styles.input}
                       value={title}
                       onChangeText={setTitle}
                       placeholder="e.g., JEE Physics Course"
-                      placeholderTextColor={Colors.textSecondary}
+                      placeholderTextColor={Colors.placeholder}
                     />
                   </View>
+                </View>
 
-                  <View style={styles.field}>
-                    <Text style={styles.label}>Description</Text>
+                <View style={styles.field}>
+                  <Text style={styles.fieldLabel}>Description</Text>
+                  <View style={styles.inputWrap}>
                     <TextInput
                       style={[styles.input, styles.textArea]}
                       value={description}
                       onChangeText={setDescription}
-                      placeholder="Full year preparation course..."
-                      placeholderTextColor={Colors.textSecondary}
+                      placeholder="Full year preparation course…"
+                      placeholderTextColor={Colors.placeholder}
                       multiline
                     />
                   </View>
+                </View>
+              </ScrollView>
 
-                  <View style={styles.modalActions}>
-                    <TouchableOpacity
-                      style={[styles.createBtn, saving && styles.createBtnDisabled]}
-                      onPress={handleCreate}
-                      disabled={saving}
-                    >
-                      {saving ? (
-                        <ActivityIndicator color="#FFF" />
-                      ) : (
-                        <Text style={styles.createBtnText}>Create Course</Text>
-                      )}
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.cancelBtn} onPress={closeModal}>
-                      <Text style={styles.cancelBtnText}>Cancel</Text>
-                    </TouchableOpacity>
-                  </View>
-                </ScrollView>
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[styles.btnPrimary, saving && { opacity: 0.7 }]}
+                  onPress={handleCreate}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <ActivityIndicator color="#FFF" />
+                  ) : (
+                    <Text style={styles.btnPrimaryText}>Create Course</Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.btnSecondary} onPress={closeModal}>
+                  <Text style={styles.btnSecondaryText}>Cancel</Text>
+                </TouchableOpacity>
               </View>
-            </KeyboardAvoidingView>
-          </View>
+            </View>
+          </KeyboardAvoidingView>
         </Modal>
       </View>
     </VendorVerificationGate>
@@ -286,141 +279,77 @@ export default function VendorCoursesScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.backgroundSecondary,
-  },
-  header: {
-    paddingTop: 8,
-    paddingHorizontal: 16,
-    backgroundColor: Colors.backgroundSecondary,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  listContent: {
-    padding: 16,
-    paddingBottom: 88,
-  },
-  listEmpty: {
-    flexGrow: 1,
-  },
+  container: { flex: 1, backgroundColor: Colors.background },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10 },
+  loadingText: { fontSize: 14, color: Colors.textSecondary, fontFamily: Typography.fontFamily.regular },
+
+  listContent: { padding: 16, paddingBottom: 96 },
+  listEmpty: { flexGrow: 1 },
+
+  // Card
   card: {
     backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 14,
+    padding: 14,
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  cardInner: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  cardIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: `${Colors.primary}18`,
     alignItems: 'center',
-    marginBottom: 8,
+    justifyContent: 'center',
   },
-  cardTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: Colors.text,
-    textTransform: 'capitalize',
-  },
-  cardDescription: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  cardDate: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
-  cardActions: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.06)',
-  },
-  cardBtn: {
+  cardBody: { flex: 1, minWidth: 0 },
+  cardTitle: { fontSize: 16, fontFamily: Typography.fontFamily.extraBold, color: Colors.text, marginBottom: 4 },
+  cardDescription: { fontSize: 13, fontFamily: Typography.fontFamily.regular, color: Colors.textSecondary, lineHeight: 18 },
+  cardDateRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
+  cardDateText: { fontSize: 12, fontFamily: Typography.fontFamily.regular, color: Colors.textSecondary },
+  cardActions: { flexDirection: 'row', gap: 8, marginTop: 12, width: '100%' },
+  btnView: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 8,
     gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: `${Colors.primary}15`,
     borderWidth: 1,
+    borderColor: `${Colors.primary}30`,
   },
-  cardBtnEdit: {
-    backgroundColor: `${Colors.primary}15`,
-    borderColor: `${Colors.primary}22`,
-  },
-  cardBtnEditText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.primary,
-  },
-  cardBtnContent: {
-    backgroundColor: `${Colors.primary}15`,
-    borderColor: `${Colors.primary}22`,
-  },
-  cardBtnContentText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.primary,
-  },
-  cardBtnDelete: {
-    backgroundColor: '#FFF0F0',
-    borderColor: 'rgba(255, 107, 107, 0.25)',
-  },
-  cardBtnDeleteText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#FF6B6B',
-  },
-  empty: {
+  btnViewText: { fontSize: 13, fontFamily: Typography.fontFamily.semiBold, color: Colors.primary },
+  btnDelete: {
     flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 48,
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: `${Colors.error}12`,
+    borderWidth: 1,
+    borderColor: `${Colors.error}30`,
   },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.text,
-    marginTop: 12,
-    marginBottom: 4,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-  },
+  btnDeleteText: { fontSize: 13, fontFamily: Typography.fontFamily.semiBold, color: Colors.error },
+
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 56 },
+  emptyTitle: { marginTop: 12, fontSize: 18, fontFamily: Typography.fontFamily.extraBold, color: Colors.text },
+  emptySubtitle: { marginTop: 4, fontSize: 14, fontFamily: Typography.fontFamily.regular, color: Colors.textSecondary, textAlign: 'center' },
+
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 20,
     width: 56,
     height: 56,
-    borderRadius: 28,
+    borderRadius: 18,
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -430,110 +359,51 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 6,
   },
+
+  // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.35)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-  },
-  modalKeyboardView: {
-    width: '100%',
-    maxWidth: 420,
+    backgroundColor: 'rgba(15,23,42,0.45)',
+    justifyContent: 'flex-end',
   },
   modalCard: {
     backgroundColor: '#FFF',
-    borderRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 8,
-    maxHeight: '90%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 32,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 24,
-    elevation: 10,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 8,
   },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 12,
+  modalHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  modalTitle: { fontSize: 18, fontFamily: Typography.fontFamily.extraBold, color: Colors.text },
+  modalSubtitle: { marginTop: 3, fontSize: 13, color: Colors.textSecondary, fontFamily: Typography.fontFamily.regular },
+  modalCloseBtn: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center',
   },
-  modalTitleContainer: {
-    flex: 1,
-    paddingRight: 8,
+  field: { marginBottom: 14 },
+  fieldLabel: {
+    fontSize: 12, fontFamily: Typography.fontFamily.bold,
+    color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6,
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.text,
+  inputWrap: {
+    borderRadius: 12, borderWidth: 1, borderColor: Colors.border, backgroundColor: '#F9FAFB',
   },
-  modalSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    color: Colors.textSecondary,
+  input: { fontSize: 14, color: Colors.text, fontFamily: Typography.fontFamily.regular, paddingHorizontal: 14, paddingVertical: 11 },
+  textArea: { minHeight: 80, textAlignVertical: 'top' },
+  modalActions: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  btnPrimary: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 13, borderRadius: 999, backgroundColor: Colors.primary,
   },
-  closeBtn: {
-    marginLeft: -8,
-    marginTop: -4,
+  btnPrimaryText: { fontSize: 14, fontFamily: Typography.fontFamily.semiBold, color: '#FFF' },
+  btnSecondary: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 13, borderRadius: 999, backgroundColor: '#F1F5F9',
   },
-  modalScroll: {
-    maxHeight: 360,
-  },
-  modalScrollContent: {
-    paddingBottom: 16,
-  },
-  field: {
-    marginBottom: 14,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.text,
-    marginBottom: 6,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: Colors.text,
-    backgroundColor: '#F9FAFB',
-  },
-  textArea: {
-    minHeight: 72,
-    textAlignVertical: 'top',
-  },
-  modalActions: {
-    marginTop: 8,
-    marginBottom: 24,
-    gap: 10,
-  },
-  createBtn: {
-    backgroundColor: Colors.primary,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  createBtnDisabled: {
-    opacity: 0.7,
-  },
-  createBtnText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFF',
-  },
-  cancelBtn: {
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  cancelBtnText: {
-    fontSize: 15,
-    color: Colors.textSecondary,
-    fontWeight: '500',
-  },
+  btnSecondaryText: { fontSize: 14, fontFamily: Typography.fontFamily.medium, color: Colors.textSecondary },
 });

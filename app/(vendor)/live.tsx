@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,12 +11,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  FlatList,
+  RefreshControl,
   Linking,
 } from 'react-native';
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
 import { Colors } from '@/constants/Colors';
+import { Typography } from '@/constants/typography';
 import { VendorVerificationGate } from '@/components/VendorVerificationGate';
 import { apiService } from '@/services/api';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,7 +36,67 @@ type ZoomMeeting = {
   startUrl?: string;
   duration?: number;
   status?: string;
+  serviceTitle?: string;
+  batchName?: string;
+  studentsEnrolled?: number;
 };
+
+type TabKey = 'all' | 'today' | 'upcoming' | 'past';
+
+type MeetingStatus = 'in_progress' | 'starts_soon' | 'upcoming' | 'past';
+
+function getMeetingStatus(meeting: ZoomMeeting): MeetingStatus {
+  const now = Date.now();
+  const start = new Date(meeting.startTime).getTime();
+  const duration = (meeting.duration ?? 60) * 60000;
+  const end = start + duration;
+  if (now >= start && now <= end) return 'in_progress';
+  if (start > now && start - now <= 15 * 60000) return 'starts_soon';
+  if (start > now) return 'upcoming';
+  return 'past';
+}
+
+function getStatusBadgeStyle(status: MeetingStatus): { bg: string; text: string; dot?: string; label: string } {
+  if (status === 'in_progress') return { bg: '#FFF7ED', text: '#D97706', dot: '#EF4444', label: 'IN PROGRESS' };
+  if (status === 'starts_soon') {
+    // compute how many minutes
+    return { bg: '#FEFCE8', text: '#CA8A04', label: 'STARTS SOON' };
+  }
+  if (status === 'upcoming') return { bg: '#F1F5F9', text: '#64748B', label: 'UPCOMING' };
+  return { bg: '#F1F5F9', text: '#94A3B8', label: 'PAST' };
+}
+
+function formatTimeRange(iso: string, duration?: number): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrow = new Date(today.getTime() + 86400000);
+    const meetingDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    let dayLabel = '';
+    if (meetingDay.getTime() === today.getTime()) dayLabel = 'Today';
+    else if (meetingDay.getTime() === tomorrow.getTime()) dayLabel = 'Tomorrow';
+    else dayLabel = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const startTime = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    if (duration) {
+      const endD = new Date(d.getTime() + duration * 60000);
+      const endTime = endD.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+      return `${dayLabel}, ${startTime} - ${endTime}`;
+    }
+    return `${dayLabel}, ${startTime}`;
+  } catch {
+    return iso;
+  }
+}
+
+function isToday(iso: string): boolean {
+  try {
+    const d = new Date(iso);
+    const now = new Date();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  } catch { return false; }
+}
 
 export default function VendorLiveScreen() {
   const insets = useSafeAreaInsets();
@@ -57,6 +120,8 @@ export default function VendorLiveScreen() {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [meetings, setMeetings] = useState<ZoomMeeting[]>([]);
   const [isLoadingMeetings, setIsLoadingMeetings] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabKey>('all');
 
   const parseDateOrToday = (value: string) => {
     if (!value) return new Date();
@@ -125,9 +190,9 @@ export default function VendorLiveScreen() {
     }
   };
 
-  const loadMeetings = async () => {
+  const loadMeetings = async (isRefresh?: boolean) => {
     try {
-      setIsLoadingMeetings(true);
+      if (!isRefresh) setIsLoadingMeetings(true);
       const res = await apiService.get<{
         status: string;
         message: string;
@@ -140,6 +205,7 @@ export default function VendorLiveScreen() {
       setMeetings([]);
     } finally {
       setIsLoadingMeetings(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -167,6 +233,19 @@ export default function VendorLiveScreen() {
       loadMeetings();
     }, [])
   );
+
+  const filteredMeetings = useMemo(() => {
+    const now = Date.now();
+    let list = meetings;
+    if (activeTab === 'today') list = meetings.filter((m) => isToday(m.startTime));
+    else if (activeTab === 'upcoming') list = meetings.filter((m) => new Date(m.startTime).getTime() > now);
+    else if (activeTab === 'past') list = meetings.filter((m) => {
+      const start = new Date(m.startTime).getTime();
+      const end = start + (m.duration ?? 60) * 60000;
+      return end < now;
+    });
+    return [...list].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+  }, [meetings, activeTab]);
 
   const openCreateModal = async () => {
     setModalVisible(true);
@@ -254,106 +333,122 @@ export default function VendorLiveScreen() {
     }
   };
 
+  const renderMeetingCard = ({ item: meeting }: { item: ZoomMeeting }) => {
+    const status = getMeetingStatus(meeting);
+    const badge = getStatusBadgeStyle(status);
+    const timeRange = formatTimeRange(meeting.startTime, meeting.duration);
+
+    return (
+      <View style={styles.meetingCard}>
+        {/* Top row: status badge + Zoom badge */}
+        <View style={styles.meetingCardTopRow}>
+          <View style={[styles.statusBadge, { backgroundColor: badge.bg }]}>
+            {badge.dot ? <View style={[styles.statusDot, { backgroundColor: badge.dot }]} /> : null}
+            <Text style={[styles.statusBadgeText, { color: badge.text }]}>{badge.label}</Text>
+          </View>
+          <View style={styles.zoomBadge}>
+            <Ionicons name="videocam" size={13} color={Colors.primary} />
+            <Text style={styles.zoomBadgeText}>Zoom</Text>
+          </View>
+        </View>
+
+        {/* Title */}
+        <Text style={styles.meetingTitle} numberOfLines={2}>{meeting.title}</Text>
+
+        {/* Service / Batch subtitle */}
+        {(meeting.serviceTitle || meeting.batchName) ? (
+          <Text style={styles.meetingSubtitle} numberOfLines={1}>
+            {meeting.serviceTitle ?? meeting.batchName}
+          </Text>
+        ) : null}
+
+        {/* Time range */}
+        <View style={styles.meetingMetaRow}>
+          <Ionicons name="calendar-outline" size={14} color={Colors.textSecondary} />
+          <Text style={styles.meetingMetaText}>{timeRange}</Text>
+        </View>
+
+        {/* Students enrolled */}
+        {typeof meeting.studentsEnrolled === 'number' ? (
+          <View style={styles.meetingMetaRow}>
+            <Ionicons name="people-outline" size={14} color={Colors.textSecondary} />
+            <Text style={styles.meetingMetaText}>{meeting.studentsEnrolled} Students Enrolled</Text>
+          </View>
+        ) : null}
+
+        {/* Action button */}
+        {status !== 'past' ? (
+          <TouchableOpacity
+            style={styles.meetingStartButton}
+            activeOpacity={0.9}
+            onPress={() => handleStartMeeting(meeting)}
+          >
+            <Text style={styles.meetingStartButtonText}>Start Meeting</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    );
+  };
+
   return (
     <VendorVerificationGate>
       <View style={styles.container}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerTextWrap}>
-            <Text style={styles.title}>Live Sessions</Text>
-            <Text style={styles.subtitle}>
-              Schedule and start your live classes from here.
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={[styles.refreshButton, isLoadingMeetings && styles.refreshButtonDisabled]}
-            onPress={() => loadMeetings()}
-            disabled={isLoadingMeetings}
-            activeOpacity={0.7}
-          >
-            {isLoadingMeetings ? (
-              <ActivityIndicator size="small" color={Colors.primary} />
-            ) : (
-              <Ionicons name="refresh" size={22} color={Colors.primary} />
-            )}
-          </TouchableOpacity>
+        {/* Tabs */}
+        <View style={styles.tabsRow}>
+          {(['all', 'today', 'upcoming', 'past'] as const).map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              style={[styles.tabChip, activeTab === tab && styles.tabChipActive]}
+              onPress={() => setActiveTab(tab)}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.tabChipText, activeTab === tab && styles.tabChipTextActive]}>
+                {tab === 'all' ? 'All Sessions' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
-        {isLoadingMeetings ? (
-          <View style={styles.meetingsLoading}>
-            <ActivityIndicator size="small" color={Colors.primary} />
+
+        {isLoadingMeetings && !isRefreshing ? (
+          <View style={styles.centerContainer}>
+            <ActivityIndicator size="large" color={Colors.primary} />
             <Text style={styles.meetingsLoadingText}>Loading meetings...</Text>
           </View>
-        ) : meetings.length === 0 ? (
-          <View style={styles.meetingsEmpty}>
-            <Text style={styles.meetingsEmptyTitle}>No meetings yet</Text>
-            <Text style={styles.meetingsEmptySubtitle}>
-              Create a Zoom meeting using the + button.
-            </Text>
-          </View>
         ) : (
-          <ScrollView
-            style={styles.meetingsScroll}
+          <FlatList
+            data={filteredMeetings}
+            keyExtractor={(item) => item.id}
+            renderItem={renderMeetingCard}
             contentContainerStyle={styles.meetingsList}
             showsVerticalScrollIndicator={false}
-          >
-            {meetings.map((meeting) => (
-              <View key={meeting.id} style={styles.meetingCard}>
-                <View style={styles.meetingHeaderRow}>
-                  <Text style={styles.meetingTitle} numberOfLines={1}>
-                    {meeting.title}
-                  </Text>
-                  {meeting.status ? (
-                    <View style={styles.meetingStatusPill}>
-                      <Text style={styles.meetingStatusText}>
-                        {meeting.status.toLowerCase()}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-                <View style={styles.meetingMetaRow}>
-                  <Ionicons
-                    name="calendar-outline"
-                    size={14}
-                    color={Colors.textSecondary}
-                  />
-                  <Text style={styles.meetingMetaText} numberOfLines={1}>
-                    {formatMeetingDate(meeting.startTime)}
-                  </Text>
-                </View>
-                <View style={styles.meetingMetaRow}>
-                  <Ionicons
-                    name="time-outline"
-                    size={14}
-                    color={Colors.textSecondary}
-                  />
-                  <Text style={styles.meetingMetaText} numberOfLines={1}>
-                    {formatMeetingTime(meeting.startTime)}
-                    {typeof meeting.duration === 'number'
-                      ? ` • ${meeting.duration} min`
-                      : ''}
-                  </Text>
-                </View>
-                <View style={styles.meetingActions}>
-                  <TouchableOpacity
-                    style={styles.meetingStartButton}
-                    activeOpacity={0.9}
-                    onPress={() => handleStartMeeting(meeting)}
-                  >
-                    <Ionicons name="play-circle-outline" size={18} color="#FFF" />
-                    <Text style={styles.meetingStartButtonText}>Start meeting</Text>
-                  </TouchableOpacity>
-                </View>
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={() => { setIsRefreshing(true); loadMeetings(true); }}
+                colors={[Colors.primary]}
+                tintColor={Colors.primary}
+              />
+            }
+            ListEmptyComponent={
+              <View style={styles.meetingsEmpty}>
+                <Ionicons name="videocam-outline" size={48} color={Colors.textSecondary} />
+                <Text style={styles.meetingsEmptyTitle}>No meetings found</Text>
+                <Text style={styles.meetingsEmptySubtitle}>
+                  Create a Zoom meeting using the + button below.
+                </Text>
               </View>
-            ))}
-          </ScrollView>
+            }
+          />
         )}
+
         <TouchableOpacity
-          style={[styles.fab, { bottom: 16 + insets.bottom }]}
+          style={[styles.fab, { bottom: 16  }]}
           onPress={openCreateModal}
           activeOpacity={0.8}
           disabled={isCreatingMeeting}
         >
           {isCreatingMeeting ? (
-            <ActivityIndicator size="small" color={Colors.white} />
+            <ActivityIndicator size="small" color="#FFF" />
           ) : (
             <Ionicons name="add" size={28} color="#FFF" />
           )}
@@ -373,16 +468,13 @@ export default function VendorLiveScreen() {
               <View style={styles.modalHeaderRow}>
                 <View style={styles.modalTitleContainer}>
                   <Text style={styles.modalTitle}>Create Meeting</Text>
-                  <Text style={styles.modalSubtitle}>
-                    Set up a new live class for your students.
-                  </Text>
+                  <Text style={styles.modalSubtitle}>Set up a new live class for your students.</Text>
                 </View>
-                <TouchableOpacity onPress={closeCreateModal}>
-                  <Ionicons
-                    name="close"
-                    size={22}
-                    color={Colors.textSecondary}
-                  />
+                <TouchableOpacity
+                  onPress={closeCreateModal}
+                  style={styles.modalCloseButton}
+                >
+                  <Ionicons name="close" size={20} color={Colors.textSecondary} />
                 </TouchableOpacity>
               </View>
 
@@ -671,49 +763,165 @@ export default function VendorLiveScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 32,
-    paddingHorizontal: 16,
     backgroundColor: Colors.background,
   },
-  headerRow: {
+
+  // Tabs
+  tabsRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+    flexWrap: 'nowrap',
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 14,
+    gap: 8,
   },
-  headerTextWrap: {
+  tabChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#F1F5F9',
+  },
+  tabChipActive: {
+    backgroundColor: Colors.primary,
+  },
+  tabChipText: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: Colors.textSecondary,
+  },
+  tabChipTextActive: {
+    color: '#FFF',
+  },
+
+  // List
+  centerContainer: {
     flex: 1,
-    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 10,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: Colors.text,
-    marginBottom: 4,
+  meetingsList: {
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    gap: 12,
   },
-  subtitle: {
+  meetingsLoadingText: {
     fontSize: 14,
     color: Colors.textSecondary,
-    marginBottom: 24,
+    fontFamily: Typography.fontFamily.regular,
   },
-  refreshButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: `${Colors.primary}18`,
+  meetingsEmpty: {
+    paddingTop: 60,
+    alignItems: 'center',
+    gap: 8,
+  },
+  meetingsEmptyTitle: {
+    fontSize: 17,
+    fontFamily: Typography.fontFamily.extraBold,
+    color: Colors.text,
+  },
+  meetingsEmptySubtitle: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    fontFamily: Typography.fontFamily.regular,
+  },
+
+  // Meeting card
+  meetingCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 18,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  meetingCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    flexShrink: 0,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.extraBold,
+    letterSpacing: 0.4,
+  },
+  zoomBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: `${Colors.primary}12`,
+    marginLeft: 'auto',
+  },
+  zoomBadgeText: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: Colors.primary,
+    top: -1,
+  },
+  meetingTitle: {
+    fontSize: 17,
+    fontFamily: Typography.fontFamily.extraBold,
+    color: Colors.text,
+    marginBottom: 2,
+  },
+  meetingSubtitle: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: Colors.primary,
+    marginBottom: 6,
+  },
+  meetingMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 5,
+  },
+  meetingMetaText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.medium,
+  },
+  meetingStartButton: {
+    marginTop: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 13,
+    borderRadius: 14,
+    backgroundColor: Colors.primary,
   },
-  refreshButtonDisabled: {
-    opacity: 0.7,
+  meetingStartButtonText: {
+    fontSize: 15,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#FFF',
   },
+  // FAB
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 16,
     width: 56,
     height: 56,
-    borderRadius: 28,
+    borderRadius: 18,
     backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
@@ -723,58 +931,67 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+
+  // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
+    backgroundColor: 'rgba(15,23,42,0.45)',
+    justifyContent: 'flex-end',
+    padding: 0,
   },
   modalCard: {
     width: '100%',
     maxHeight: '90%',
-    borderRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     backgroundColor: '#FFF',
-    padding: 16,
+    padding: 20,
+    paddingBottom: 32,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
     shadowRadius: 20,
-    elevation: 4,
+    elevation: 8,
   },
   modalHeaderRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
+    marginBottom: 4,
   },
   modalTitleContainer: { flex: 1, marginRight: 12 },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: Colors.text },
-  modalSubtitle: { marginTop: 4, fontSize: 13, color: Colors.textSecondary },
-  modalScroll: { marginTop: 12 },
+  modalTitle: { fontSize: 18, fontFamily: Typography.fontFamily.extraBold, color: Colors.text },
+  modalSubtitle: { marginTop: 3, fontSize: 13, color: Colors.textSecondary, fontFamily: Typography.fontFamily.regular },
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalScroll: { marginTop: 16 },
   modalScrollContent: { paddingBottom: 12 },
-  inputGroup: { marginBottom: 12 },
+  inputGroup: { marginBottom: 14 },
   inputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.text,
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.textSecondary,
     marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   inputContainer: {
-    borderRadius: 10,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: Colors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
     backgroundColor: '#F9FAFB',
   },
-  input: { fontSize: 14, color: Colors.text },
-  row: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  rowItem: {
-    flex: 1,
-  },
+  input: { fontSize: 14, color: Colors.text, fontFamily: Typography.fontFamily.regular },
+  row: { flexDirection: 'row', gap: 12 },
+  rowItem: { flex: 1 },
   dropdownTrigger: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -784,6 +1001,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: Colors.text,
+    fontFamily: Typography.fontFamily.regular,
   },
   dateInputInner: {
     flexDirection: 'row',
@@ -794,6 +1012,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: Colors.text,
+    fontFamily: Typography.fontFamily.regular,
   },
   placeholderText: {
     color: Colors.textSecondary,
@@ -807,142 +1026,36 @@ const styles = StyleSheet.create({
     maxHeight: 200,
     overflow: 'hidden',
   },
-  dropdownScroll: {
-    maxHeight: 200,
-  },
-  dropdownItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
+  dropdownScroll: { maxHeight: 200 },
+  dropdownItem: { paddingHorizontal: 14, paddingVertical: 11 },
   dropdownItemText: {
     fontSize: 14,
     color: Colors.text,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.medium,
   },
-  modalActions: { marginTop: 12, flexDirection: 'row', gap: 8 },
-  meetingsScroll: {
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  meetingsList: {
-    paddingBottom: 16,
-    gap: 10,
-  },
-  meetingsLoading: {
-    marginTop: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  meetingsLoadingText: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
-  meetingsEmpty: {
-    marginTop: 24,
-  },
-  meetingsEmptyTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.text,
-    marginBottom: 4,
-  },
-  meetingsEmptySubtitle: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
-  meetingCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
-  },
-  meetingHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  meetingTitle: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.text,
-    marginRight: 8,
-  },
-  meetingStatusPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999,
-    backgroundColor: '#E5E7EB',
-  },
-  meetingStatusText: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    textTransform: 'capitalize',
-  },
-  meetingMetaText: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
-  meetingMetaSubText: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  meetingActions: {
-    marginTop: 10,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-  },
-  meetingStartButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: Colors.primary,
-  },
-  meetingStartButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#FFF',
-  },
-  meetingMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 4,
-  },
+  modalActions: { marginTop: 16, flexDirection: 'row', gap: 10 },
   primaryButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 999,
+    paddingVertical: 13,
+    borderRadius: 18,
     backgroundColor: Colors.primary,
   },
   primaryButtonDisabled: { opacity: 0.7 },
-  primaryButtonText: { fontSize: 14, fontWeight: '600', color: '#FFF' },
+  primaryButtonText: { fontSize: 14, fontFamily: Typography.fontFamily.semiBold, color: '#FFF' },
   secondaryButton: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: '#F3F4F6',
+    paddingVertical: 13,
+    borderRadius: 18,
+    backgroundColor: '#F1F5F9',
   },
   secondaryButtonText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.textSecondary,
   },
 });

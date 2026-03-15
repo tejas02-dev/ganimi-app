@@ -13,6 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,6 +26,8 @@ import { categoryService } from '@/services/category.service';
 import { branchService } from '@/services/branch.service';
 import type { Category } from '@/types/category';
 import type { Branch } from '@/types/auth';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { Typography } from '@/constants/typography';
 
 export default function VendorServicesScreen() {
   const router = useRouter();
@@ -50,6 +53,12 @@ export default function VendorServicesScreen() {
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [servicePendingDelete, setServicePendingDelete] = useState<VendorService | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [menuService, setMenuService] = useState<VendorService | null>(null);
+
+  const formatPrice = (value: number | undefined) =>
+    value != null
+      ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
+      : '—';
 
   useEffect(() => {
     loadServices();
@@ -235,70 +244,61 @@ export default function VendorServicesScreen() {
     }
   };
 
-  const renderMetaChip = (icon: keyof typeof Ionicons.glyphMap, label: string) => (
-    <View style={styles.metaChip}>
-      <Ionicons name={icon} size={14} color={Colors.textSecondary} />
-      <Text style={styles.metaChipText} numberOfLines={1}>
-        {label}
-      </Text>
-    </View>
-  );
-
-  const renderServiceCard = ({ item }: { item: VendorService }) => (
-    <View style={styles.serviceCard}>
-      <View style={styles.serviceHeader}>
-        <View style={styles.serviceInfo}>
-          <Text style={styles.serviceName} numberOfLines={1}>
-            {item.name}
-          </Text>
-          {item.description && (
-            <Text style={styles.serviceDescription} numberOfLines={2}>
-              {item.description}
+  const renderServiceCard = ({ item }: { item: VendorService }) => {
+    const imageUri = (item as any).imageUrl;
+    return (
+      <View style={styles.serviceCard}>
+        <View style={styles.serviceCardInner}>
+          <View style={styles.serviceThumb}>
+            {imageUri ? (
+              <Image source={{ uri: imageUri }} style={styles.serviceThumbImage} />
+            ) : (
+              <View style={styles.serviceThumbPlaceholder}>
+                <Ionicons name="image" size={28} color={Colors.primary} />
+              </View>
+            )}
+          </View>
+          <View style={styles.serviceCardBody}>
+            <View style={styles.statusPill}>
+              <Text style={styles.statusPillText}>ACTIVE</Text>
+            </View>
+            <Text style={styles.serviceCardTitle} numberOfLines={1}>
+              {item.name}
             </Text>
-          )}
+            <View style={styles.priceRow}>
+              <Text style={styles.priceAmount}>{formatPrice(item.price)}</Text>
+              <Text style={styles.priceSuffix}> / session</Text>
+            </View>
+          </View>
         </View>
-        {item.price !== undefined && <Text style={styles.pricePill}>₹{item.price}</Text>}
-      </View>
 
-      <View style={styles.metaRow}>
-        {item.branchName ? renderMetaChip('location-outline', item.branchName) : null}
-        {typeof item.batchCount === 'number'
-          ? renderMetaChip('people-outline', `${item.batchCount} batches`)
-          : null}
-        {typeof item.studentCount === 'number'
-          ? renderMetaChip('person-outline', `${item.studentCount} students`)
-          : null}
-      </View>
-
-      <View style={styles.divider} />
-
-      <View style={styles.actionButtons}>
+        <View style={styles.cardActions}>
+          <TouchableOpacity
+            style={styles.flatButton}
+            onPress={() => handleEditService(item)}
+          >
+            <MaterialIcons name="mode-edit" size={18} color="black" />
+            <Text style={styles.flatButtonText}>Edit</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.flatButton, styles.flatButtonPrimary]}
+            onPress={() => handleViewDetails(item)}
+          >
+            <Ionicons name="eye" size={18} color={Colors.primary} />
+            <Text style={styles.flatButtonTextPrimary}>View Details</Text>
+          </TouchableOpacity>
+        </View>
         <TouchableOpacity
-          style={[styles.actionButton, styles.viewButton]}
-          onPress={() => handleViewDetails(item)}
-        >
-          <Ionicons name="eye-outline" size={18} color={Colors.primary} />
-          <Text style={[styles.actionButtonText, styles.viewButtonText]}>View</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionButton, styles.editButton]}
-          onPress={() => handleEditService(item)}
-        >
-          <Ionicons name="create-outline" size={18} color={Colors.primary} />
-          <Text style={[styles.actionButtonText, styles.editButtonText]}>Edit</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionButton, styles.deleteButton]}
+          style={[styles.flatButton, styles.flatButtonDelete]}
           onPress={() => handleDeleteService(item)}
         >
-          <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
-          <Text style={[styles.actionButtonText, styles.deleteButtonText]}>Delete</Text>
+          <Ionicons name="trash" size={18} color="#FFF" />
+          <Text style={styles.flatButtonTextDelete}>Delete</Text>
         </TouchableOpacity>
+        
       </View>
-    </View>
-  );
+    );
+  };
 
   const renderAddServiceModal = () => {
     const fixedCategory = Array.isArray(categories)
@@ -312,12 +312,12 @@ export default function VendorServicesScreen() {
         transparent
         onRequestClose={handleCloseModal}
       >
-        <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.modalKeyboardView}
-          >
-            <View style={styles.modalCard}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={handleCloseModal} />
+          <View style={styles.modalCard}>
               <View style={styles.modalHeader}>
                 <View style={styles.modalTitleContainer}>
                   <Text style={styles.modalTitle}>
@@ -531,9 +531,8 @@ export default function VendorServicesScreen() {
                   </TouchableOpacity>
                 </View>
               </ScrollView>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     );
   };
@@ -544,11 +543,12 @@ export default function VendorServicesScreen() {
     return (
       <Modal
         visible={!!servicePendingDelete}
-        animationType="fade"
+        animationType="slide"
         transparent
         onRequestClose={() => setServicePendingDelete(null)}
       >
         <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setServicePendingDelete(null)} />
           <View style={styles.deleteModalCard}>
             <View style={styles.deleteIconCircle}>
               <Ionicons name="trash-outline" size={26} color="#FF6B6B" />
@@ -643,6 +643,50 @@ export default function VendorServicesScreen() {
     <View style={styles.container}>
       {renderAddServiceModal()}
       {renderDeleteConfirmModal()}
+
+      {menuService && (
+        <Modal visible transparent animationType="fade">
+          <TouchableOpacity
+            style={styles.menuOverlay}
+            activeOpacity={1}
+            onPress={() => setMenuService(null)}
+          >
+            <View style={styles.menuCard}>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setMenuService(null);
+                  handleViewDetails(menuService);
+                }}
+              >
+                <Ionicons name="eye" size={20} color={Colors.text} />
+                <Text style={styles.menuItemText}>View Details</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setMenuService(null);
+                  handleEditService(menuService);
+                }}
+              >
+                <Ionicons name="create-outline" size={20} color={Colors.text} />
+                <Text style={styles.menuItemText}>Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setMenuService(null);
+                  handleDeleteService(menuService);
+                }}
+              >
+                <Ionicons name="trash-outline" size={20} color={Colors.error} />
+                <Text style={[styles.menuItemText, { color: Colors.error }]}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
+
       <FlatList
         data={services}
         renderItem={renderServiceCard}
@@ -709,115 +753,158 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   serviceCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(15, 23, 42, 0.06)',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    elevation: 4,
+    backgroundColor: Colors.white,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
   },
-  serviceHeader: {
+  cardMenuButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    zIndex: 1,
+    padding: 4,
+  },
+  serviceCardInner: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 10,
+    marginBottom: 12,
   },
-  serviceInfo: {
+  serviceThumb: {
+    width: 80,
+    height: 80,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: Colors.primaryLight,
+  },
+  serviceThumbImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  serviceThumbPlaceholder: {
     flex: 1,
-    marginRight: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  serviceName: {
-    fontSize: 18,
-    fontWeight: '700',
+  serviceCardBody: {
+    flex: 1,
+    marginLeft: 12,
+    justifyContent: 'center',
+  },
+  statusPill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#DCFCE7',
+    marginBottom: 6,
+  },
+  statusPillText: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: '#166534',
+    letterSpacing: 0.3,
+  },
+  serviceCardTitle: {
+    fontSize: 15,
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
     marginBottom: 4,
   },
-  serviceDescription: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    lineHeight: 20,
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
   },
-  pricePill: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: `${Colors.primary}12`,
-    borderWidth: 1,
-    borderColor: `${Colors.primary}22`,
+  priceAmount: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.primary,
-    fontSize: 14,
-    fontWeight: '700',
   },
-  metaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  metaChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(148, 163, 184, 0.14)',
-    maxWidth: '100%',
-  },
-  metaChipText: {
+  priceSuffix: {
     fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
-    fontWeight: '600',
+    marginLeft: 2,
   },
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.06)',
-    marginTop: 14,
-    marginBottom: 12,
-  },
-  actionButtons: {
+  cardActions: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 10,
   },
-  actionButton: {
+  flatButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    gap: 4,
+    backgroundColor: Colors.backgroundSecondary,
     borderWidth: 1,
+    borderColor: Colors.border,
   },
-  viewButton: {
-    backgroundColor: `${Colors.primary}15`,
-    borderColor: `${Colors.primary}22`,
+  flatButtonText: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.semiBold,
+    top: -2,
+    color: Colors.text,
   },
-  editButton: {
-    backgroundColor: `${Colors.primary}15`,
-    borderColor: `${Colors.primary}22`,
+  flatButtonPrimary: {
+    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.primaryLight,
   },
-  deleteButton: {
-    backgroundColor: '#FFF0F0',
-    borderColor: 'rgba(255, 107, 107, 0.25)',
-  },
-  actionButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  viewButtonText: {
+  flatButtonTextPrimary: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.semiBold,
+    top: -2,
     color: Colors.primary,
   },
-  editButtonText: {
-    color: Colors.primary,
+  flatButtonDelete: {
+    backgroundColor: Colors.error,
+    borderColor: Colors.error,
+    marginTop: 10,
+    borderRadius: 14,
   },
-  deleteButtonText: {
-    color: '#FF6B6B',
+  flatButtonTextDelete: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.semiBold,
+    top: -2,
+    color: '#FFF',
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  menuCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    paddingVertical: 8,
+    minWidth: 200,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  menuItemText: {
+    fontSize: 15,
+    fontFamily: Typography.fontFamily.medium,
+    color: Colors.text,
   },
   emptyState: {
     flex: 1,
@@ -827,7 +914,7 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 22,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
     marginTop: 16,
     marginBottom: 8,
@@ -848,44 +935,44 @@ const styles = StyleSheet.create({
   emptyButtonText: {
     color: '#FFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.35)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 16,
+    justifyContent: 'flex-end',
   },
-  modalKeyboardView: {
-    width: '100%',
-    maxWidth: 420,
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
   },
   modalCard: {
+    width: '100%',
+    maxHeight: '90%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     backgroundColor: '#FFF',
-    borderRadius: 24,
     paddingHorizontal: 20,
     paddingTop: 18,
-    paddingBottom: 8,
+    paddingBottom: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 24,
-    elevation: 10,
-    maxHeight: '90%',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 8,
   },
   deleteModalCard: {
+    width: '100%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     backgroundColor: '#FFF',
-    borderRadius: 20,
     paddingHorizontal: 20,
     paddingVertical: 20,
-    width: '100%',
-    maxWidth: 380,
+    paddingBottom: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 10,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 8,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -899,7 +986,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
   },
   modalSubtitle: {
@@ -922,7 +1009,7 @@ const styles = StyleSheet.create({
   },
   inputLabel: {
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.text,
     marginBottom: 6,
   },
@@ -941,6 +1028,7 @@ const styles = StyleSheet.create({
   input: {
     fontSize: 14,
     color: Colors.text,
+    fontFamily: Typography.fontFamily.medium,
   },
   textAreaContainer: {
     minHeight: 72,
@@ -955,11 +1043,13 @@ const styles = StyleSheet.create({
   readonlyText: {
     fontSize: 14,
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
   },
   helperText: {
     marginTop: 4,
     fontSize: 12,
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
   },
   dropdownTrigger: {
     flexDirection: 'row',
@@ -970,9 +1060,11 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: Colors.text,
+    fontFamily: Typography.fontFamily.medium,
   },
   placeholderText: {
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
   },
   dropdownList: {
     marginTop: 6,
@@ -998,7 +1090,7 @@ const styles = StyleSheet.create({
   dropdownItemText: {
     fontSize: 14,
     color: Colors.text,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.medium,
   },
   dropdownItemSubText: {
     fontSize: 12,
@@ -1013,7 +1105,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 999,
+    borderRadius: 16,
     paddingVertical: 12,
     backgroundColor: Colors.primary,
     gap: 6,
@@ -1024,7 +1116,7 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#FFF',
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
   },
   secondaryButton: {
     paddingVertical: 10,
@@ -1033,13 +1125,13 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.textSecondary,
   },
   deleteIconCircle: {
     width: 52,
     height: 52,
-    borderRadius: 26,
+    borderRadius: 16,
     backgroundColor: '#FFF0F0',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1048,7 +1140,7 @@ const styles = StyleSheet.create({
   },
   deleteTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
     textAlign: 'center',
     marginBottom: 6,
@@ -1056,11 +1148,12 @@ const styles = StyleSheet.create({
   deleteMessage: {
     fontSize: 14,
     color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
     textAlign: 'center',
     marginBottom: 18,
   },
   deleteServiceName: {
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.text,
   },
   deleteActions: {
@@ -1071,24 +1164,26 @@ const styles = StyleSheet.create({
   deleteCancelButton: {
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 999,
+    borderRadius: 16,
     backgroundColor: '#F3F4F6',
   },
   deleteCancelText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.textSecondary,
+    top: -2,
   },
   deleteConfirmButton: {
     paddingHorizontal: 18,
     paddingVertical: 10,
-    borderRadius: 999,
+    borderRadius: 16,
     backgroundColor: '#EF4444',
   },
   deleteConfirmText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: '#FFF',
+    top: -2,
   },
   fab: {
     position: 'absolute',
@@ -1096,7 +1191,7 @@ const styles = StyleSheet.create({
     bottom: 20,
     width: 56,
     height: 56,
-    borderRadius: 28,
+    borderRadius: 16,
     backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',

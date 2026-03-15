@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -8,11 +8,15 @@ import {
   FlatList,
   TouchableOpacity,
   TextInput,
+  BackHandler,
+  RefreshControl,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
-import { useLocalSearchParams } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/Colors';
+import { Typography } from '@/constants/typography';
 import { VendorVerificationGate } from '@/components/VendorVerificationGate';
 import { batchService, type ServiceBatch } from '@/services/batch.service';
 import { serviceService } from '@/services/service.service';
@@ -39,8 +43,10 @@ type Params = {
 
 export default function VendorBatchDetailScreen() {
   const { batchId, serviceId } = useLocalSearchParams<Params>();
+  const router = useRouter();
 
   const [batch, setBatch] = useState<ServiceBatch | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [serviceName, setServiceName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,55 +73,62 @@ export default function VendorBatchDetailScreen() {
   const [metricValues, setMetricValues] = useState<Record<string, any>>({});
   const [evaluationRemarks, setEvaluationRemarks] = useState('');
 
-  useEffect(() => {
+  const loadAll = useCallback(async (isRefresh = false) => {
     if (!batchId) return;
-    const load = async () => {
-      try {
-        setError(null);
-        setIsLoading(true);
-
-        const batchPromise = batchService.getBatchById(String(batchId));
-        const enrollmentsPromise = enrollmentService.getEnrollmentsByBatch(String(batchId));
-        const servicePromise = serviceId
-          ? serviceService.getServiceById(String(serviceId))
-          : Promise.resolve(null);
-        const metricsPromise =
-          serviceId != null
-            ? serviceMetricService.getOptedMetrics(String(serviceId))
-            : Promise.resolve(null);
-
-        const [batchRes, enrollmentsRes, serviceRes, metricsRes] = await Promise.all([
-          batchPromise,
-          enrollmentsPromise,
-          servicePromise,
-          metricsPromise,
-        ]);
-
-        setBatch(batchRes.data);
-        setEnrollments(enrollmentsRes.data || []);
-
-        if (serviceRes && 'data' in (serviceRes as any)) {
-          const raw = (serviceRes as any).data;
-          const svc = raw && typeof raw === 'object' && 'data' in raw ? (raw as any).data : raw;
-          setServiceName(svc?.name ?? null);
-        }
-        if (metricsRes && 'data' in (metricsRes as any)) {
-          setOptedMetrics((metricsRes as any).data || []);
-        }
-      } catch (e: any) {
-        console.error('[VendorBatchDetail] Failed to load batch', e);
-        setError(e?.message || 'Unable to load batch details. Please try again.');
-      } finally {
-        setIsLoading(false);
-        setIsLoadingEnrollments(false);
-        setIsLoadingMetrics(false);
-      }
-    };
-
+    if (!isRefresh) setIsLoading(true);
+    setError(null);
     setIsLoadingEnrollments(true);
     setIsLoadingMetrics(true);
-    load();
+    try {
+      const [batchRes, enrollmentsRes, serviceRes, metricsRes] = await Promise.all([
+        batchService.getBatchById(String(batchId)),
+        enrollmentService.getEnrollmentsByBatch(String(batchId)),
+        serviceId ? serviceService.getServiceById(String(serviceId)) : Promise.resolve(null),
+        serviceId != null ? serviceMetricService.getOptedMetrics(String(serviceId)) : Promise.resolve(null),
+      ]);
+
+      setBatch(batchRes.data);
+      setEnrollments(enrollmentsRes.data || []);
+
+      if (serviceRes && 'data' in (serviceRes as any)) {
+        const raw = (serviceRes as any).data;
+        const svc = raw && typeof raw === 'object' && 'data' in raw ? (raw as any).data : raw;
+        setServiceName(svc?.name ?? null);
+      }
+      if (metricsRes && 'data' in (metricsRes as any)) {
+        setOptedMetrics((metricsRes as any).data || []);
+      }
+    } catch (e: any) {
+      console.error('[VendorBatchDetail] Failed to load batch', e);
+      setError(e?.message || 'Unable to load batch details. Please try again.');
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+      setIsLoadingEnrollments(false);
+      setIsLoadingMetrics(false);
+    }
   }, [batchId, serviceId]);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (serviceId) {
+          router.replace({
+            pathname: '/(vendor)/service/[serviceId]' as any,
+            params: { serviceId: String(serviceId) },
+          });
+        } else {
+          router.replace('/(vendor)/services' as any);
+        }
+        return true;
+      });
+      return () => sub.remove();
+    }, [router, serviceId])
+  );
 
   const today = useMemo(() => {
     const d = new Date();
@@ -335,6 +348,13 @@ export default function VendorBatchDetailScreen() {
     }
   };
 
+  const formatEnrolledDate = (dateStr?: string | null) => {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
   const renderStudentItem = ({ item }: { item: BatchEnrollment }) => {
     const initials = item.studentName
       ? item.studentName
@@ -345,23 +365,8 @@ export default function VendorBatchDetailScreen() {
           .join('')
       : '?';
 
-    const todaysStatus = item.todaysAttendance?.status as AttendanceStatus | undefined;
-    const localStatus = markingStatus[item.studentId];
-    const effectiveStatus = localStatus && localStatus !== 'loading' ? localStatus : todaysStatus;
-
-    let statusLabel = 'Not marked';
-    let statusColor = Colors.textSecondary;
-    if (effectiveStatus === 'present') {
-      statusLabel = 'Present today';
-      statusColor = '#16A34A';
-    } else if (effectiveStatus === 'absent') {
-      statusLabel = 'Absent today';
-      statusColor = '#DC2626';
-    }
-
-    const isLoadingThis = localStatus === 'loading';
-    const isPresent = effectiveStatus === 'present';
-    const isAbsent = effectiveStatus === 'absent';
+    const shortId = `#${item.id.slice(0, 4).toUpperCase()}`;
+    const enrolledDate = formatEnrolledDate((item as any).enrolledAt ?? (item as any).createdAt);
 
     return (
       <View style={styles.studentCard}>
@@ -371,50 +376,11 @@ export default function VendorBatchDetailScreen() {
           </View>
           <View style={styles.studentTextContainer}>
             <Text style={styles.studentName}>{item.studentName}</Text>
-            <Text style={styles.studentEmail}>{item.studentEmail}</Text>
-            <Text style={[styles.studentStatus, { color: statusColor }]}>{statusLabel}</Text>
+            <Text style={styles.studentMeta}>
+              ID: {shortId}{enrolledDate ? ` • Enrolled: ${enrolledDate}` : ''}
+            </Text>
           </View>
-          <View style={styles.quickActionsColumn}>
-            <Text style={styles.quickActionsLabel}>Quick Action</Text>
-            <View style={styles.quickActionsRow}>
-              <TouchableOpacity
-                style={[
-                  styles.quickActionButton,
-                  isPresent && styles.quickActionButtonPresent,
-                ]}
-                disabled={isLoadingThis}
-                onPress={() => handleMarkAttendance(item, 'present')}
-              >
-                {isLoadingThis ? (
-                  <ActivityIndicator size="small" color={Colors.primary} />
-                ) : (
-                  <Ionicons
-                    name="checkmark-circle-outline"
-                    size={20}
-                    color={isPresent ? '#FFFFFF' : '#16A34A'}
-                  />
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.quickActionButton,
-                  isAbsent && styles.quickActionButtonAbsent,
-                ]}
-                disabled={isLoadingThis}
-                onPress={() => handleMarkAttendance(item, 'absent')}
-              >
-                {isLoadingThis ? (
-                  <ActivityIndicator size="small" color={Colors.primary} />
-                ) : (
-                  <Ionicons
-                    name="close-circle-outline"
-                    size={20}
-                    color={isAbsent ? '#FFFFFF' : '#DC2626'}
-                  />
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
+          <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
         </View>
       </View>
     );
@@ -453,41 +419,23 @@ export default function VendorBatchDetailScreen() {
           </View>
           <View style={styles.studentTextContainer}>
             <Text style={styles.studentName}>{item.studentName}</Text>
-            <Text style={styles.studentEmail}>{item.studentEmail}</Text>
-            <Text style={[styles.studentStatus, { color: statusColor }]}>
-              {statusLabel} on selected date
+            <Text style={[styles.studentMeta, { color: statusColor }]}>
+              {statusLabel}
             </Text>
           </View>
-          <View style={styles.quickActionsColumn}>
-            <Text style={styles.quickActionsLabel}>Mark</Text>
-            <View style={styles.quickActionsRow}>
-              <TouchableOpacity
-                style={[
-                  styles.quickActionButton,
-                  isPresent && styles.quickActionButtonPresent,
-                ]}
-                onPress={() => handleMarkAttendanceForDate(item, 'present')}
-              >
-                <Ionicons
-                  name="checkmark-circle-outline"
-                  size={20}
-                  color={isPresent ? '#FFFFFF' : '#16A34A'}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.quickActionButton,
-                  isAbsent && styles.quickActionButtonAbsent,
-                ]}
-                onPress={() => handleMarkAttendanceForDate(item, 'absent')}
-              >
-                <Ionicons
-                  name="close-circle-outline"
-                  size={20}
-                  color={isAbsent ? '#FFFFFF' : '#DC2626'}
-                />
-              </TouchableOpacity>
-            </View>
+          <View style={styles.attendanceMarkRow}>
+            <TouchableOpacity
+              style={[styles.markBtn, isPresent && styles.markBtnPresent]}
+              onPress={() => handleMarkAttendanceForDate(item, 'present')}
+            >
+              <Ionicons name="checkmark" size={18} color={isPresent ? '#FFF' : '#16A34A'} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.markBtn, isAbsent && styles.markBtnAbsent]}
+              onPress={() => handleMarkAttendanceForDate(item, 'absent')}
+            >
+              <Ionicons name="close" size={18} color={isAbsent ? '#FFF' : '#DC2626'} />
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -517,22 +465,19 @@ export default function VendorBatchDetailScreen() {
           </View>
           <View style={styles.studentTextContainer}>
             <Text style={styles.studentName}>{item.studentName}</Text>
-            <Text style={styles.studentEmail}>{item.studentEmail}</Text>
-            <Text style={styles.studentStatus}>
-              {lastEval ? `Last evaluated on ${lastEval}` : 'Not evaluated yet'}
+            <Text style={styles.studentMeta}>
+              {lastEval ? `Last evaluated: ${lastEval}` : 'Not evaluated yet'}
             </Text>
           </View>
-          <View style={styles.quickActionsColumn}>
-            <TouchableOpacity
-              style={styles.evaluateButton}
-              activeOpacity={0.9}
-              onPress={() => openEvaluateModal(item)}
-              disabled={isLoadingMetrics || optedMetrics.length === 0}
-            >
-              <Ionicons name="create-outline" size={18} color="#FFF" />
-              <Text style={styles.evaluateButtonText}>Evaluate</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.evaluateButton}
+            activeOpacity={0.9}
+            onPress={() => openEvaluateModal(item)}
+            disabled={isLoadingMetrics || optedMetrics.length === 0}
+          >
+            <Ionicons name="create-outline" size={16} color="#FFF" />
+            <Text style={styles.evaluateButtonText}>Evaluate</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -580,137 +525,94 @@ export default function VendorBatchDetailScreen() {
     return value.split('T')[0] ?? value;
   };
 
+  const enrolledCount = enrollments.length;
+  const capacityTotal = typeof batch.capacity === 'number' ? batch.capacity : 0;
+  const capacityFraction = capacityTotal > 0 ? Math.min(enrolledCount / capacityTotal, 1) : 0;
+
   return (
     <VendorVerificationGate>
-    <ScrollView contentContainerStyle={styles.container}>
-      {/* Colored batch summary */}
+    <View style={styles.outerContainer}>
+    <ScrollView
+        contentContainerStyle={styles.container}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => {
+              setIsRefreshing(true);
+              loadAll(true);
+            }}
+            colors={[Colors.primary]}
+            tintColor={Colors.primary}
+          />
+        }
+      >
+      {/* Hero header card */}
       <View style={styles.batchHeaderCard}>
         <View style={styles.batchHeaderTopRow}>
-          <View style={styles.batchHeaderTitleCol}>
-            <Text style={styles.batchTitle}>{batch.name}</Text>
-            {serviceName ? (
-              <Text style={styles.batchServiceName}>{serviceName}</Text>
-            ) : null}
+          <View style={styles.batchAvatarCircle}>
+            <Ionicons name="people" size={24} color={Colors.primary} />
           </View>
-          <View style={styles.batchHeaderPill}>
-            <Ionicons name="calendar-outline" size={16} color="#EEF2FF" />
-            <Text style={styles.batchHeaderPillText}>{scheduleLabel}</Text>
+          <View style={styles.statusBadge}>
+            <Text style={styles.statusBadgeText}>Active</Text>
           </View>
+        </View>
+
+        <Text style={styles.batchTitle}>{batch.name}</Text>
+        {serviceName ? (
+          <Text style={styles.batchServiceName}>{serviceName}</Text>
+        ) : null}
+
+        <View style={styles.batchMetaRow}>
+          <Ionicons name="time-outline" size={15} color={Colors.textSecondary} />
+          <Text style={styles.batchMetaText}>{timeLabel}</Text>
         </View>
 
         <View style={styles.batchMetaRow}>
-          <View style={styles.batchMetaItem}>
-            <Text style={styles.batchMetaLabel}>Time</Text>
-            <Text style={styles.batchMetaValue}>{timeLabel}</Text>
-          </View>
-          {typeof batch.capacity !== 'undefined' && (
-            <View style={styles.batchMetaItem}>
-              <Text style={styles.batchMetaLabel}>Capacity</Text>
-              <Text style={styles.batchMetaValue}>{batch.capacity}</Text>
-            </View>
-          )}
-          {typeof batch.price !== 'undefined' && (
-            <View style={styles.batchMetaItem}>
-              <Text style={styles.batchMetaLabel}>Price</Text>
-              <Text style={styles.batchMetaValue}>₹{batch.price}</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.batchDatesRow}>
-          {batch.startDate ? (
-            <View style={styles.batchDateItem}>
-              <Text style={styles.batchMetaLabel}>Start</Text>
-              <Text style={styles.batchMetaValue}>{formatDateOnly(batch.startDate)}</Text>
-            </View>
-          ) : null}
-          {batch.endDate ? (
-            <View style={styles.batchDateItem}>
-              <Text style={styles.batchMetaLabel}>End</Text>
-              <Text style={styles.batchMetaValue}>{formatDateOnly(batch.endDate)}</Text>
-            </View>
-          ) : null}
-        </View>
-      </View>
-
-      {/* Students & attendance management */}
-      <View style={styles.managementHeaderRow}>
-        <View style={styles.managementTextContainer}>
-          <Text style={styles.managementTitle}>Students & Attendance</Text>
-          <Text style={styles.managementSubtitle}>
-            Enroll students and manage daily attendance for this batch.
+          <Ionicons name="person-outline" size={15} color={Colors.textSecondary} />
+          <Text style={styles.batchMetaText}>
+            Capacity: {enrolledCount}/{capacityTotal} students
           </Text>
         </View>
-        <TouchableOpacity
-          style={styles.enrollButton}
-          activeOpacity={0.9}
-          onPress={handleOpenEnrollModal}
-        >
-          <Ionicons name="person-add-outline" size={18} color="#FFF" />
-          <Text style={styles.enrollButtonText}>Enroll student</Text>
-        </TouchableOpacity>
+
+        {/* Capacity progress bar */}
+        <View style={styles.progressBarTrack}>
+          <View style={[styles.progressBarFill, { width: `${Math.round(capacityFraction * 100)}%` }]} />
+        </View>
       </View>
 
-      {/* Tabs */}
+      {/* Tabs — underline style matching student service page */}
       <View style={styles.tabsRow}>
         {(['students', 'attendance', 'remarks'] as const).map((tabKey) => {
           const label =
-            tabKey === 'students' ? 'Student list' : tabKey === 'attendance' ? 'Attendance' : 'Remarks';
+            tabKey === 'students' ? 'Student List' : tabKey === 'attendance' ? 'Attendance' : 'Remarks';
           const isActive = activeTab === tabKey;
           return (
             <TouchableOpacity
               key={tabKey}
-              style={[styles.tabChip, isActive && styles.tabChipActive]}
+              style={styles.tabItem}
               onPress={() => setActiveTab(tabKey)}
             >
-              <Text style={[styles.tabChipText, isActive && styles.tabChipTextActive]}>{label}</Text>
+              <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>{label}</Text>
+              {isActive && <View style={styles.tabUnderline} />}
             </TouchableOpacity>
           );
         })}
       </View>
+      <View style={styles.tabDivider} />
 
       {/* Tab content */}
       {activeTab === 'students' && (
         <View style={styles.tabContent}>
-          <View style={styles.refreshRow}>
-            <TouchableOpacity
-              style={styles.refreshButton}
-              activeOpacity={0.8}
-              onPress={async () => {
-                if (!batchId) return;
-                try {
-                  setIsLoadingEnrollments(true);
-                  const res = await enrollmentService.getEnrollmentsByBatch(String(batchId));
-                  setEnrollments(res.data || []);
-                } catch (e: any) {
-                  console.error('[VendorBatchDetail] Failed to refresh enrollments', e);
-                  alert(e?.message || 'Failed to refresh students. Please try again.');
-                } finally {
-                  setIsLoadingEnrollments(false);
-                }
-              }}
-              disabled={isLoadingEnrollments}
-            >
-              {isLoadingEnrollments ? (
-                <ActivityIndicator size="small" color={Colors.primary} />
-              ) : (
-                <>
-                  <Ionicons name="refresh-outline" size={16} color={Colors.primary} />
-                  <Text style={styles.refreshButtonText}>Refresh students</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-
           {isLoadingEnrollments ? (
             <View style={styles.centerContainer}>
               <ActivityIndicator size="small" color={Colors.primary} />
             </View>
           ) : enrollments.length === 0 ? (
             <View style={styles.emptyState}>
+              <Ionicons name="people-outline" size={40} color={Colors.textSecondary} />
               <Text style={styles.emptyTitle}>No students enrolled yet</Text>
               <Text style={styles.emptySubtitle}>
-                Use the Enroll student button above to add students to this batch.
+                Tap the + button to add students to this batch.
               </Text>
             </View>
           ) : (
@@ -1134,15 +1036,28 @@ export default function VendorBatchDetailScreen() {
         </View>
       )}
     </ScrollView>
+
+      {/* FAB to enroll student */}
+      <TouchableOpacity
+        style={styles.fab}
+        activeOpacity={0.9}
+        onPress={handleOpenEnrollModal}
+      >
+        <Ionicons name="person-add" size={22} color="#FFF" />
+      </TouchableOpacity>
+    </View>
     </VendorVerificationGate>
   );
 }
 
 const styles = StyleSheet.create({
+  outerContainer: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
   container: {
     padding: 16,
-    paddingBottom: 24,
-    backgroundColor: Colors.background,
+    paddingBottom: 100,
     flexGrow: 1,
   },
   centerContainer: {
@@ -1150,151 +1065,119 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 16,
-    backgroundColor: Colors.background,
   },
   loadingText: {
     marginTop: 8,
     fontSize: 14,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
   },
   errorText: {
     fontSize: 14,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.error,
     textAlign: 'center',
   },
+  // Header card — light lavender background
   batchHeaderCard: {
-    backgroundColor: '#1D4ED8',
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 3,
+    backgroundColor: `${Colors.primary}14`,
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 20,
   },
   batchHeaderTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 14,
   },
-  batchHeaderTitleCol: {
-    flex: 1,
-    marginRight: 8,
+  batchAvatarCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: `${Colors.primary}20`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusBadge: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  statusBadgeText: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: '#166534',
   },
   batchTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#EEF2FF',
+    fontSize: 22,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.text,
+    marginBottom: 4,
   },
   batchServiceName: {
-    marginTop: 4,
     fontSize: 13,
-    color: '#C7D2FE',
-  },
-  batchHeaderPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(37, 99, 235, 0.6)',
-    gap: 6,
-  },
-  batchHeaderPillText: {
-    fontSize: 12,
-    color: '#EEF2FF',
-    maxWidth: 140,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
+    marginBottom: 10,
   },
   batchMetaRow: {
     flexDirection: 'row',
-    marginTop: 4,
-    marginBottom: 8,
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
   },
-  batchMetaItem: {
-    flex: 1,
-  },
-  batchMetaLabel: {
-    fontSize: 12,
-    color: '#BFDBFE',
-    marginBottom: 2,
-  },
-  batchMetaValue: {
+  batchMetaText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#EFF6FF',
-  },
-  batchDatesRow: {
-    flexDirection: 'row',
-    marginTop: 4,
-  },
-  batchDateItem: {
-    marginRight: 16,
-  },
-  managementHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    flexWrap: 'wrap',
-    columnGap: 8,
-    marginBottom: 12,
-  },
-  managementTextContainer: {
-    flex: 1,
-    minWidth: '60%',
-  },
-  managementTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.text,
   },
-  managementSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    color: Colors.textSecondary,
+  progressBarTrack: {
+    marginTop: 10,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: `${Colors.primary}22`,
+    overflow: 'hidden',
   },
-  enrollButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+  progressBarFill: {
+    height: '100%',
     borderRadius: 999,
     backgroundColor: Colors.primary,
-    gap: 6,
-    alignSelf: 'flex-start',
-    marginTop: 8,
   },
-  enrollButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#FFF',
-  },
+  // Tabs — underline style
   tabsRow: {
     flexDirection: 'row',
-    backgroundColor: '#E5E7EB',
-    borderRadius: 999,
-    padding: 3,
-    marginBottom: 12,
+    marginBottom: 0,
   },
-  tabChip: {
+  tabItem: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 6,
-    borderRadius: 999,
+    paddingVertical: 10,
+    position: 'relative',
   },
-  tabChipActive: {
-    backgroundColor: '#FFF',
-  },
-  tabChipText: {
-    fontSize: 13,
+  tabLabel: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.textSecondary,
-    fontWeight: '500',
   },
-  tabChipTextActive: {
-    color: Colors.text,
-    fontWeight: '600',
+  tabLabelActive: {
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.primary,
+  },
+  tabUnderline: {
+    position: 'absolute',
+    bottom: 0,
+    left: 12,
+    right: 12,
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: Colors.primary,
+  },
+  tabDivider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginBottom: 12,
   },
   tabContent: {
     marginTop: 4,
@@ -1302,103 +1185,85 @@ const styles = StyleSheet.create({
   studentListContent: {
     paddingBottom: 16,
   },
+  // Student card
   studentCard: {
     backgroundColor: '#FFF',
     borderRadius: 14,
-    padding: 12,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
+    padding: 14,
+    marginBottom: 2,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
   },
   studentInfoRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
   },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#DBEAFE',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: `${Colors.primary}18`,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
   },
   avatarText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1D4ED8',
+    fontSize: 15,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.primary,
   },
   studentTextContainer: {
     flex: 1,
-    marginRight: 8,
   },
   studentName: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.text,
+    marginBottom: 3,
   },
-  studentEmail: {
+  studentMeta: {
     fontSize: 12,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  studentStatus: {
-    marginTop: 4,
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  quickActionsColumn: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  quickActionsLabel: {
-    fontSize: 10,
-    color: Colors.textSecondary,
-    marginBottom: 4,
-  },
-  quickActionsRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  quickActionButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: '#F9FAFB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  quickActionButtonPresent: {
-    backgroundColor: '#16A34A',
-    borderColor: '#16A34A',
-  },
-  quickActionButtonAbsent: {
-    backgroundColor: '#DC2626',
-    borderColor: '#DC2626',
   },
   emptyState: {
-    paddingVertical: 32,
+    paddingVertical: 40,
     alignItems: 'center',
+    gap: 8,
   },
   emptyTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.text,
-    marginBottom: 4,
   },
   emptySubtitle: {
     fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
     textAlign: 'center',
+    paddingHorizontal: 24,
   },
   placeholderText: {
     fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
+  },
+  // FAB
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 28,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
   },
   enrollModalOverlay: {
     position: 'absolute',
@@ -1436,12 +1301,13 @@ const styles = StyleSheet.create({
   },
   enrollModalTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
   },
   enrollModalSubtitle: {
     marginTop: 4,
     fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
   },
   enrollModalContent: {
@@ -1452,38 +1318,41 @@ const styles = StyleSheet.create({
   },
   enrollInputLabel: {
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.text,
     marginBottom: 6,
   },
   enrollInputContainer: {
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.backgroundSecondary,
   },
   enrollInput: {
     fontSize: 14,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.text,
   },
   enrollCancelButton: {
     marginTop: 8,
-    borderRadius: 999,
-    backgroundColor: '#F3F4F6',
+    borderRadius: 16,
+    backgroundColor: Colors.backgroundSecondary,
+    borderWidth: 1,
+    borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
   },
   enrollCancelText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.textSecondary,
   },
   enrollPrimaryButton: {
     marginTop: 8,
-    borderRadius: 999,
+    borderRadius: 16,
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1494,27 +1363,8 @@ const styles = StyleSheet.create({
   },
   enrollPrimaryButtonText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: '#FFF',
-  },
-  refreshRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginBottom: 8,
-  },
-  refreshButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#E5E7EB',
-  },
-  refreshButtonText: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    fontWeight: '500',
   },
   calendarHeaderRow: {
     flexDirection: 'row',
@@ -1525,7 +1375,7 @@ const styles = StyleSheet.create({
   },
   calendarHeaderText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.text,
   },
   calendarWeekRow: {
@@ -1537,6 +1387,7 @@ const styles = StyleSheet.create({
     width: `${100 / 7}%`,
     textAlign: 'center',
     fontSize: 11,
+    fontFamily: Typography.fontFamily.medium,
     color: Colors.textSecondary,
   },
   calendarGrid: {
@@ -1567,32 +1418,55 @@ const styles = StyleSheet.create({
   },
   calendarDayText: {
     fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.text,
   },
   calendarDayTextSelected: {
     color: '#FFF',
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
   },
   attendanceListHeaderRow: {
     marginBottom: 6,
   },
   attendanceListTitle: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.text,
+  },
+  attendanceMarkRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  markBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.backgroundSecondary,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  markBtnPresent: {
+    backgroundColor: '#16A34A',
+    borderColor: '#16A34A',
+  },
+  markBtnAbsent: {
+    backgroundColor: '#DC2626',
+    borderColor: '#DC2626',
   },
   evaluateButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 999,
+    borderRadius: 10,
     backgroundColor: Colors.primary,
-    gap: 6,
+    gap: 4,
   },
   evaluateButtonText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: '#FFF',
   },
   evaluateModalOverlay: {

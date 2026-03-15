@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl, TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/Colors';
+import { Typography } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { statsService } from '@/services/stats.service';
+import { bookingService, type MyBookingItem } from '@/services/booking.service';
 import type { StatItem } from '@/services/stats.service';
 
 type VendorStats = {
@@ -15,6 +18,34 @@ type VendorStats = {
   totalOrders: number;
   totalRevenue: number;
 };
+
+const RECENT_BOOKINGS_LIMIT = 5;
+
+function getRelativeTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffMins < 60) return diffMins <= 1 ? 'JUST NOW' : `${diffMins}M AGO`;
+    if (diffHours < 24) return `${diffHours}H AGO`;
+    if (diffDays === 1) return 'YESTERDAY';
+    if (diffDays < 7) return `${diffDays}D AGO`;
+    return d.toLocaleDateString();
+  } catch {
+    return '';
+  }
+}
+
+function formatBookingPrice(price: string | null | undefined): string {
+  if (price == null || price === '') return '—';
+  const n = parseFloat(price);
+  if (Number.isNaN(n)) return price;
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+}
 
 const defaultStats: VendorStats = {
   totalServices: 0,
@@ -28,7 +59,9 @@ const defaultStats: VendorStats = {
 
 export default function VendorDashboardScreen() {
   const { user } = useAuth();
+  const router = useRouter();
   const [stats, setStats] = useState<VendorStats>(defaultStats);
+  const [recentBookings, setRecentBookings] = useState<MyBookingItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,8 +92,13 @@ export default function VendorDashboardScreen() {
     if (!isRefreshing) setIsLoading(true);
 
     try {
-      const items = await statsService.getStats();
+      const [items, bookingsRes] = await Promise.all([
+        statsService.getStats(),
+        bookingService.getMyBookings().catch(() => ({ data: [] })),
+      ]);
       setStats(parseStats(items));
+      const list = (bookingsRes as any).data ?? bookingsRes?.data ?? [];
+      setRecentBookings(Array.isArray(list) ? list.slice(0, RECENT_BOOKINGS_LIMIT) : []);
     } catch (e: any) {
       console.error('Failed to load stats', e);
       setError(e?.message || 'Unable to load stats. Please pull to refresh.');
@@ -97,75 +135,64 @@ export default function VendorDashboardScreen() {
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-      <View style={styles.cardsRow}>
-        <View style={styles.card}>
-          <View style={styles.cardIcon}>
-            <Ionicons name="cube-outline" size={24} color={Colors.primary} />
+      <View style={styles.statsTopRow}>
+        <View style={styles.statCard}>
+          <Text style={styles.statTrendPositive}>+12%</Text>
+          <View style={styles.statCardIconWrap}>
+            <Ionicons name="people" size={24} color={Colors.primary} />
           </View>
-          <Text style={styles.cardLabel}>Total Services</Text>
-          <Text style={styles.cardValue}>{stats.totalServices}</Text>
+          <Text style={styles.statLabel}>STUDENTS</Text>
+          <Text style={styles.statValue}>{stats.totalStudents}</Text>
         </View>
 
-        <View style={styles.card}>
-          <View style={styles.cardIcon}>
-            <Ionicons name="people-outline" size={24} color={Colors.primary} />
+        <View style={styles.statCard}>
+          <Text style={styles.statTrendStable}>Stable</Text>
+          <View style={styles.statCardIconWrap}>
+            <Ionicons name="barbell" size={24} color={Colors.primary} />
           </View>
-          <Text style={styles.cardLabel}>Total Students</Text>
-          <Text style={styles.cardValue}>{stats.totalStudents}</Text>
+          <Text style={styles.statLabel}>SERVICES</Text>
+          <Text style={styles.statValue}>{stats.totalServices}</Text>
         </View>
       </View>
 
-      <View style={styles.cardsRow}>
-        <View style={styles.card}>
-          <View style={styles.cardIcon}>
-            <Ionicons name="calendar-outline" size={24} color={Colors.primary} />
-          </View>
-          <Text style={styles.cardLabel}>Total Bookings</Text>
-          <Text style={styles.cardValue}>{stats.totalBookings}</Text>
+      <View style={styles.statCardRevenue}>
+        <Text style={styles.statTrendRevenue}>+8%</Text>
+        <View style={styles.statCardIconWrapRevenue}>
+          <Ionicons name="cash" size={24} color="#FFF" />
         </View>
-
-        <View style={styles.card}>
-          <View style={styles.cardIcon}>
-            <Ionicons name="checkmark-circle-outline" size={24} color={Colors.primary} />
-          </View>
-          <Text style={styles.cardLabel}>Active Bookings</Text>
-          <Text style={styles.cardValue}>{stats.activeBookings}</Text>
-        </View>
-      </View>
-
-      <View style={styles.cardsRow}>
-        <View style={styles.card}>
-          <View style={styles.cardIcon}>
-            <Ionicons name="layers-outline" size={24} color={Colors.primary} />
-          </View>
-          <Text style={styles.cardLabel}>Total Batches</Text>
-          <Text style={styles.cardValue}>{stats.totalBatches}</Text>
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.cardIcon}>
-            <Ionicons name="cash-outline" size={24} color={Colors.primary} />
-          </View>
-          <Text style={styles.cardLabel}>Total Revenue</Text>
-          <Text style={styles.cardValue}>{formatCurrency(stats.totalRevenue)}</Text>
-        </View>
+        <Text style={styles.statLabelRevenue}>REVENUE</Text>
+        <Text style={styles.statValueRevenue}>{formatCurrency(stats.totalRevenue)}</Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.actionsRow}>
-          <View style={styles.actionChip}>
-            <Ionicons name="add-circle-outline" size={18} color={Colors.primary} />
-            <Text style={styles.actionText}>Create Service</Text>
-          </View>
-          <View style={styles.actionChip}>
-            <Ionicons name="videocam-outline" size={18} color={Colors.primary} />
-            <Text style={styles.actionText}>Start Live</Text>
-          </View>
-          <View style={styles.actionChip}>
-            <Ionicons name="book-outline" size={18} color={Colors.primary} />
-            <Text style={styles.actionText}>Add Content</Text>
-          </View>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Recent Bookings</Text>
+          <TouchableOpacity onPress={() => router.push('/(vendor)/bookings' as any)} hitSlop={8}>
+            <Text style={styles.seeAllLink}>See All</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.bookingsCard}>
+          {recentBookings.length === 0 ? (
+            <Text style={styles.bookingsEmpty}>No recent bookings</Text>
+          ) : (
+            recentBookings.map((b, i) => (
+              <View key={b.bookingId ?? i} style={[styles.bookingRow, i < recentBookings.length - 1 && styles.bookingRowBorder]}>
+                <View style={styles.bookingAvatar}>
+                  <Text style={styles.bookingAvatarText}>
+                    {(b.studentName ?? '?').charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.bookingInfo}>
+                  <Text style={styles.bookingName} numberOfLines={1}>{b.studentName ?? '—'}</Text>
+                  <Text style={styles.bookingService} numberOfLines={1}>{b.serviceName ?? '—'}</Text>
+                </View>
+                <View style={styles.bookingRight}>
+                  <Text style={styles.bookingPrice}>{formatBookingPrice(b.servicePrice)}</Text>
+                  <Text style={styles.bookingTime}>{getRelativeTime(b.bookingDate)}</Text>
+                </View>
+              </View>
+            ))
+          )}
         </View>
       </View>
     </ScrollView>
@@ -178,100 +205,216 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.backgroundSecondary,
   },
   content: {
-    padding: 16,
-    paddingTop: 40,
+    padding: 12,
   },
   loadingRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
     marginBottom: 8,
   },
   loadingText: {
-    marginLeft: 8,
     fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
   },
   errorText: {
     fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.error,
     marginBottom: 8,
   },
   heading: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 20,
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.text,
-    marginBottom: 4,
   },
   subheading: {
     fontSize: 14,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
     marginBottom: 16,
   },
-  cardsRow: {
+  statsTopRow: {
     flexDirection: 'row',
     gap: 12,
     marginBottom: 12,
   },
-  card: {
+  statCard: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.white,
     borderRadius: 16,
     padding: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
     elevation: 2,
   },
-  cardIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#EFF6FF',
+  statTrendPositive: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: '#22C55E',
+  },
+  statTrendStable: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
+  },
+  statCardIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#EDECFC',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 6,
   },
-  cardLabel: {
-    fontSize: 13,
+  statLabel: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.textSecondary,
-    marginBottom: 4,
+    letterSpacing: 0.5,
   },
-  cardValue: {
-    fontSize: 20,
-    fontWeight: '700',
+  statValue: {
+    fontSize: 24,
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
   },
-  section: {
-    marginTop: 16,
-    backgroundColor: '#FFFFFF',
+  statCardRevenue: {
+    backgroundColor: Colors.primary,
     borderRadius: 16,
-    padding: 16,
+    padding: 14,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  statTrendRevenue: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: '#FFF',
+  },
+  statCardIconWrapRevenue: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  statLabelRevenue: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: '#FFF',
+    letterSpacing: 0.5,
+    opacity: 0.95,
+  },
+  statValueRevenue: {
+    fontSize: 24,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#FFF',
+  },
+  section: {
+    marginTop: 4,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+    marginTop: 4,
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.text,
-    marginBottom: 12,
   },
-  actionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+  seeAllLink: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: Colors.link,
   },
-  actionChip: {
+  bookingsCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 18,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  bookingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#EFF6FF',
   },
-  actionText: {
-    marginLeft: 6,
+  bookingRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  bookingAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  bookingAvatarText: {
+    fontSize: 18,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#FFF',
+  },
+  bookingInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  bookingName: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.text,
+    marginBottom: 2,
+  },
+  bookingService: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
+    letterSpacing: 0.6,
+  },
+  bookingRight: {
+    alignItems: 'flex-end',
+  },
+  bookingPrice: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.text,
+    marginBottom: 2,
+  },
+  bookingTime: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
+  },
+  bookingsEmpty: {
     fontSize: 13,
-    color: Colors.primary,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    paddingVertical: 24,
   },
 });
 

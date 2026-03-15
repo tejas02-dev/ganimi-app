@@ -19,6 +19,8 @@ import {
   DrawerItemList,
 } from '@react-navigation/drawer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Typography } from '@/constants/typography';
+import { VendorBottomBar } from '@/components/BottomBar';
 
 function VendorDrawerContent(props: any) {
   const { user, vendorProfile, logout } = useAuth();
@@ -40,42 +42,35 @@ function VendorDrawerContent(props: any) {
         {...props}
         contentContainerStyle={styles.drawerScroll}
       >
-        {/* Logo */}
-        <View style={styles.logoContainer}>
-          <View style={styles.logoRow}>
-            <View style={styles.logoBox}>
-              <Text style={styles.logoText}>Ganimi</Text>
-            </View>
+        <View style={styles.userSection}>
+          <View style={styles.userAvatar}>
+            {profilePicture ? (
+              <Image source={{ uri: profilePicture }} style={styles.userAvatarImage} />
+            ) : (
+              <Text style={styles.userAvatarText}>
+                {user?.name?.charAt(0)?.toUpperCase() ?? 'V'}
+              </Text>
+            )}
           </View>
-          <Text style={styles.logoSubtitle}>Main Navigation</Text>
+          <View style={styles.userInfo}>
+            <Text style={styles.userName} numberOfLines={1}>
+              {user?.name ?? 'Vendor'}
+            </Text>
+            <Text style={styles.userEmail} numberOfLines={1}>
+              {user?.email ?? 'vendor@example.com'}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => setMenuVisible(true)}
+            style={styles.menuButton}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Ionicons name="ellipsis-vertical" size={18} color={Colors.textSecondary} />
+          </TouchableOpacity>
         </View>
 
         <DrawerItemList {...props} />
       </DrawerContentScrollView>
-
-      {/* Bottom user info */}
-      <View style={[styles.userSection, { paddingBottom: 12 + (insets.bottom || 0) }]}>
-        <View style={styles.userAvatar}>
-          <Text style={styles.userAvatarText}>
-            {user?.name?.charAt(0)?.toUpperCase() ?? 'U'}
-          </Text>
-        </View>
-        <View style={styles.userInfo}>
-          <Text style={styles.userName} numberOfLines={1}>
-            {user?.name ?? 'Vendor'}
-          </Text>
-          <Text style={styles.userEmail} numberOfLines={1}>
-            {user?.email ?? 'vendor@example.com'}
-          </Text>
-        </View>
-        <TouchableOpacity
-          onPress={() => setMenuVisible(true)}
-          style={styles.menuButton}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Ionicons name="ellipsis-vertical" size={18} color={Colors.textSecondary} />
-        </TouchableOpacity>
-      </View>
 
       <Modal
         visible={menuVisible}
@@ -128,26 +123,26 @@ function VendorDrawerContent(props: any) {
 
 export default function VendorLayout() {
   return (
+    <>
     <Drawer
       screenOptions={{
         headerShown: true,
         header: (props) => <TopBar {...props} />,
-        drawerType: 'slide',
-        drawerActiveTintColor: '#FFFFFF',
+        drawerStyle: {
+          width: '80%',
+        },
+        drawerType: 'front',
+        drawerActiveTintColor: Colors.drawerActiveTintColor,
         drawerInactiveTintColor: Colors.textSecondary,
-        drawerActiveBackgroundColor: Colors.primary,
-        drawerInactiveBackgroundColor: 'transparent',
+        drawerActiveBackgroundColor: Colors.drawerActive,
         drawerLabelStyle: {
           fontSize: 14,
-          fontWeight: '500',
+          fontFamily: Typography.fontFamily.semiBold,
         },
         drawerItemStyle: {
-          borderRadius: 10,
+          borderRadius: 20,
           marginVertical: 2,
           paddingVertical: 0,
-        },
-        drawerStyle: {
-          width: 260,
         },
       }}
       drawerContent={(props) => <VendorDrawerContent {...props} />}
@@ -157,7 +152,7 @@ export default function VendorLayout() {
         options={{
           title: 'Dashboard',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" size={size} color={color} />
+            <Ionicons name="grid" size={size} color={color} />
           ),
         }}
       />
@@ -166,7 +161,7 @@ export default function VendorLayout() {
         options={{
           title: 'Profile',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
+            <Ionicons name="person" size={size} color={color} />
           ),
         }}
       />
@@ -175,7 +170,7 @@ export default function VendorLayout() {
         options={{
           title: 'My Services',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="cube-outline" size={size} color={color} />
+            <Ionicons name="briefcase" size={size} color={color} />
           ),
         }}
       />
@@ -184,7 +179,7 @@ export default function VendorLayout() {
         options={{
           title: 'My Bookings',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="calendar-outline" size={size} color={color} />
+            <Ionicons name="calendar" size={size} color={color} />
           ),
         }}
       />
@@ -193,7 +188,7 @@ export default function VendorLayout() {
         options={{
           title: 'Notifications',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="notifications-outline" size={size} color={color} />
+            <Ionicons name="notifications" size={size} color={color} />
           ),
         }}
       />
@@ -202,7 +197,7 @@ export default function VendorLayout() {
         options={{
           title: 'Analytics',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="stats-chart-outline" size={size} color={color} />
+            <Ionicons name="bar-chart" size={size} color={color} />
           ),
         }}
       />
@@ -211,7 +206,7 @@ export default function VendorLayout() {
         options={{
           title: 'Settings',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="settings-outline" size={size} color={color} />
+            <Ionicons name="settings" size={size} color={color} />
           ),
         }}
       />
@@ -220,7 +215,7 @@ export default function VendorLayout() {
         options={{
           title: 'Live',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="radio-outline" size={size} color={color} />
+            <Ionicons name="videocam" size={size} color={color} />
           ),
         }}
       />
@@ -229,7 +224,7 @@ export default function VendorLayout() {
         options={{
           title: 'Content',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="document-text-outline" size={size} color={color} />
+            <Ionicons name="document-text" size={size} color={color} />
           ),
         }}
       />
@@ -238,7 +233,7 @@ export default function VendorLayout() {
         options={{
           title: 'Courses',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="book-outline" size={size} color={color} />
+            <Ionicons name="book" size={size} color={color} />
           ),
         }}
       />
@@ -247,7 +242,7 @@ export default function VendorLayout() {
         options={{
           title: 'Contact Us',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="chatbubbles-outline" size={size} color={color} />
+            <Ionicons name="call" size={size} color={color} />
           ),
         }}
       />
@@ -256,7 +251,7 @@ export default function VendorLayout() {
         options={{
           title: 'Support',
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="help-circle-outline" size={size} color={color} />
+            <Ionicons name="help-circle" size={size} color={color} />
           ),
         }}
       />
@@ -264,25 +259,24 @@ export default function VendorLayout() {
       <Drawer.Screen
         name="service/[serviceId]"
         options={{
-          href: null,
           drawerItemStyle: { display: 'none' },
         }}
       />
       <Drawer.Screen
         name="batch/[batchId]"
         options={{
-          href: null,
           drawerItemStyle: { display: 'none' },
         }}
       />
       <Drawer.Screen
         name="course/[courseId]"
         options={{
-          href: null,
           drawerItemStyle: { display: 'none' },
         }}
       />
     </Drawer>
+    <VendorBottomBar />
+    </>
   );
 }
 
@@ -290,62 +284,42 @@ const styles = StyleSheet.create({
   drawerScroll: {
     paddingTop: 40,
   },
-  logoContainer: {
-    paddingHorizontal: 16,
-    marginBottom: 16,
-  },
-  logoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  logoBox: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    backgroundColor: Colors.backgroundSecondary,
-  },
-  logoText: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  logoSubtitle: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-  },
   userSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
     paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    backgroundColor: '#F9FAFB',
+    marginBottom: 12,
+    backgroundColor: Colors.white,
   },
   userAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  userAvatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 20,
+  },
   userAvatarText: {
     color: '#FFF',
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
   },
   userInfo: {
     flex: 1,
     marginLeft: 8,
   },
   userName: {
+    fontFamily: Typography.fontFamily.semiBold,
     fontSize: 14,
-    fontWeight: '600',
     color: Colors.text,
   },
   userEmail: {
     fontSize: 12,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
   },
   menuButton: {
@@ -389,7 +363,7 @@ const styles = StyleSheet.create({
   menuAvatarText: {
     color: '#FFF',
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
   },
   menuUserInfo: {
     flex: 1,
@@ -397,13 +371,13 @@ const styles = StyleSheet.create({
   },
   menuUserName: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.text,
   },
   menuUserEmail: {
     fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
-    marginTop: 2,
   },
   menuSeparator: {
     height: 1,
@@ -414,10 +388,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    justifyContent: 'center',
   },
   menuLogoutText: {
     fontSize: 16,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.semiBold,
     color: Colors.error,
   },
 });
